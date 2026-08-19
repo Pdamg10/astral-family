@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("member") // "admin" | "member"
+  avatar       String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLogin    DateTime?
+
+  themeSettings  ThemeSettings?
+  birthProfiles  BirthProfile[]
+  invitations    Invitation[]
+  activityEvents ActivityEvent[]
+}
+
+model Invitation {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  createdBy    String
+  maxUses      Int       @default(1)
+  currentUses  Int       @default(0)
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  creator User @relation(fields: [createdBy], references: [id])
+}
+
+model BirthProfile {
+  id            String   @id @default(cuid())
+  name          String
+  birthDate     String   // YYYY-MM-DD
+  birthTime     String?  // HH:MM, null if unknown
+  timeUnknown   Boolean  @default(false)
+  city          String
+  country       String
+  latitude      Float
+  longitude     Float
+  timezone      String
+  createdBy     String
+  isCalculated  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  creator       User            @relation(fields: [createdBy], references: [id])
+  planetaryPositions PlanetaryPosition[]
+  houses        House[]
+  aspects       Aspect[]
+  chartPoints   ChartPoint[]
+}
+
+model PlanetaryPosition {
+  id             String @id @default(cuid())
+  birthProfileId String
+  body           String  // Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto
+  sign           String  // Aries, Taurus, etc.
+  degree         Float
+  minute         Float
+  retrograde     Boolean @default(false)
+  house          Int?
+
+  birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([birthProfileId, body])
+}
+
+model House {
+  id             String @id @default(cuid())
+  birthProfileId String
+  houseNumber    Int
+  sign           String
+  degree         Float
+  minute         Float
+
+  birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([birthProfileId, houseNumber])
+}
+
+model Aspect {
+  id             String  @id @default(cuid())
+  birthProfileId String
+  body1          String
+  body2          String
+  type           String  // conjunction, opposition, trine, square, sextile, quincunx
+  angle          Float
+  orb            Float
+  degree1        Float
+  degree2        Float
+
+  birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
+}
+
+model ChartPoint {
+  id             String @id @default(cuid())
+  birthProfileId String
+  point          String  // NorthNode, SouthNode, Chiron, Lilith, PartOfFortune, Ascendant, MC, DESC, IC
+  sign           String
+  degree         Float
+  minute         Float
+  house          Int?
+
+  birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([birthProfileId, point])
+}
+
+model ThemeSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  themeType       String   @default("midnight") // preset name or "custom"
+  primaryColor    String   @default("#a855f7")
+  secondaryColor  String   @default("#ec4899")
+  accentColor     String   @default("#f59e0b")
+  backgroundType  String   @default("gradient") // solid, gradient, custom-gradient
+  backgroundColor  String?  // for solid
+  gradientColors  String   @default("[\"#0f0a1a\",\"#1a0a2e\",\"#0f0a1a\"]")
+  cardOpacity     Float    @default(0.85)
+  borderRadius    Float    @default(12)
+  shadowIntensity Float    @default(0.5)
+  textSize        String   @default("medium") // small, medium, large
+  infoDensity     String   @default("normal") // compact, normal, spacious
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // profile_created, profile_updated, user_joined, etc.
+  message   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
