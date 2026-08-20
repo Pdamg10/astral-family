@@ -12,8 +12,8 @@ function parseBirthDateTime(data: BirthData): Date {
   const [hours, minutes] = data.birthTime.split(':').map(Number);
   // Parse timezone offset (e.g., "-04:00" or "America/Caracas")
   let tzOffsetHours = 0;
-  if (data.timezone.includes('America/')) {
-    // Approximate timezone offsets for common American timezones
+  if (data.timezone.includes('/') && !data.timezone.startsWith('+') && !data.timezone.startsWith('-')) {
+    // IANA timezone string (e.g., "America/Caracas", "Europe/Madrid", "Atlantic/Canary")
     const tzMap: Record<string, number> = {
       'America/New_York': -5, 'America/Chicago': -6, 'America/Denver': -7,
       'America/Los_Angeles': -8, 'America/Phoenix': -7, 'America/Anchorage': -9,
@@ -23,8 +23,25 @@ function parseBirthDateTime(data: BirthData): Date {
       'America/Puerto_Rico': -4, 'America/Manaus': -4, 'America/La_Paz': -4,
       'America/Guayaquil': -5, 'America/Montevideo': -3, 'America/Asuncion': -4,
       'America/Indiana/Indianapolis': -5, 'America/Detroit': -5,
+      // Argentina sub-zones
+      'America/Argentina/Buenos_Aires': -3, 'America/Argentina/Cordoba': -3,
+      'America/Argentina/Mendoza': -3, 'America/Argentina/Tucuman': -3,
+      'America/Argentina/Salta': -3, 'America/Argentina/Jujuy': -3,
+      // Mexico sub-zones
+      'America/Cancun': -5, 'America/Merida': -6, 'America/Tijuana': -8,
+      'America/Monterrey': -6,
+      // Central America
+      'America/Costa_Rica': -6, 'America/Managua': -6,
+      'America/El_Salvador': -6, 'America/Tegucigalpa': -6, 'America/Guatemala': -6,
+      'America/Santo_Domingo': -4,
+      // Atlantic
+      'Atlantic/Canary': 0,
+      // Europe
       'Europe/Madrid': 1, 'Europe/Paris': 1, 'Europe/Berlin': 1, 'Europe/Rome': 1,
       'Europe/London': 0, 'Europe/Moscow': 3, 'Europe/Athens': 2,
+      'Europe/Lisbon': 0, 'Europe/Dublin': 0, 'Europe/Amsterdam': 1,
+      'Europe/Zurich': 1, 'Europe/Vienna': 1,
+      // Asia & Pacific
       'Asia/Tokyo': 9, 'Asia/Shanghai': 8, 'Asia/Hong_Kong': 8,
       'Asia/Kolkata': 5.5, 'Asia/Dubai': 4, 'Asia/Singapore': 8,
       'Australia/Sydney': 10, 'Pacific/Auckland': 12,
@@ -128,11 +145,11 @@ export async function calculateFullChart(data: BirthData): Promise<FullChartData
     { point: 'MC' as ChartPointName, sign: mcSign.sign, degree: mcSign.degreeInSign, minute: mcSign.minute, absoluteDegree: mcDeg, house: 10 },
     { point: 'DESC' as ChartPointName, sign: degreesToSign(descDeg).sign, degree: degreesToSign(descDeg).degreeInSign, minute: degreesToSign(descDeg).minute, absoluteDegree: descDeg, house: 7 },
     { point: 'IC' as ChartPointName, sign: degreesToSign(icDeg).sign, degree: degreesToSign(icDeg).degreeInSign, minute: degreesToSign(icDeg).minute, absoluteDegree: icDeg, house: 4 },
-    { point: 'NorthNode' as ChartPointName, ...degreesToSign(northNodeDeg), absoluteDegree: northNodeDeg },
-    { point: 'SouthNode' as ChartPointName, ...degreesToSign(southNodeDeg), absoluteDegree: southNodeDeg },
-    { point: 'Chiron' as ChartPointName, ...degreesToSign(chironDeg), absoluteDegree: chironDeg },
-    { point: 'Lilith' as ChartPointName, ...degreesToSign(lilithDeg), absoluteDegree: lilithDeg },
-    { point: 'PartOfFortune' as ChartPointName, ...degreesToSign(pofDeg), absoluteDegree: pofDeg },
+    { point: 'NorthNode' as ChartPointName, sign: degreesToSign(northNodeDeg).sign, degree: degreesToSign(northNodeDeg).degreeInSign, minute: degreesToSign(northNodeDeg).minute, absoluteDegree: northNodeDeg },
+    { point: 'SouthNode' as ChartPointName, sign: degreesToSign(southNodeDeg).sign, degree: degreesToSign(southNodeDeg).degreeInSign, minute: degreesToSign(southNodeDeg).minute, absoluteDegree: southNodeDeg },
+    { point: 'Chiron' as ChartPointName, sign: degreesToSign(chironDeg).sign, degree: degreesToSign(chironDeg).degreeInSign, minute: degreesToSign(chironDeg).minute, absoluteDegree: chironDeg },
+    { point: 'Lilith' as ChartPointName, sign: degreesToSign(lilithDeg).sign, degree: degreesToSign(lilithDeg).degreeInSign, minute: degreesToSign(lilithDeg).minute, absoluteDegree: lilithDeg },
+    { point: 'PartOfFortune' as ChartPointName, sign: degreesToSign(pofDeg).sign, degree: degreesToSign(pofDeg).degreeInSign, minute: degreesToSign(pofDeg).minute, absoluteDegree: pofDeg },
   ];
 
   // Assign planets to houses

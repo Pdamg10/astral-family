@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import AstrologyWheel from '@/components/features/charts/AstrologyWheel';
+import AspectarioGrid from '@/components/features/charts/AspectarioGrid';
 import { getPlanetSymbol, getAspectSymbol, getSignEmoji } from '@/services/astrology/utils';
 import { searchCities } from '@/lib/cities';
 import type { CityData } from '@/lib/cities';
@@ -9,19 +10,24 @@ import type { BirthProfile } from '@/types/prisma-types';
 import { io, Socket } from 'socket.io-client';
 
 const THEME_PRESETS: Record<string, {themeType:string;primaryColor:string;secondaryColor:string;accentColor:string;gradientColors:string[]}> = {
-  midnight:   { themeType:'midnight', primaryColor:'#a855f7', secondaryColor:'#ec4899', accentColor:'#f59e0b', gradientColors:['#0f0a1a','#1a0a2e','#0f0a1a'] },
-  cosmic:    { themeType:'cosmic', primaryColor:'#6366f1', secondaryColor:'#8b5cf6', accentColor:'#06b6d4', gradientColors:['#0c0a20','#1e1b4b','#0c1445'] },
-  inferno:   { themeType:'inferno', primaryColor:'#ef4444', secondaryColor:'#f97316', accentColor:'#fbbf24', gradientColors:['#1a0a0a','#2d0a0a','#1a0505'] },
-  crimson:   { themeType:'crimson', primaryColor:'#e11d48', secondaryColor:'#be123c', accentColor:'#fb7185', gradientColors:['#1a0510','#2d0a1a','#1a0510'] },
-  mystic:    { themeType:'mystic', primaryColor:'#8b5cf6', secondaryColor:'#d946ef', accentColor:'#2dd4bf', gradientColors:['#0a0a1a','#1a0a2e','#0a1a2e'] },
-  aurora:    { themeType:'aurora', primaryColor:'#10b981', secondaryColor:'#34d399', accentColor:'#a78bfa', gradientColors:['#0a1a0a','#0a2e1a','#0a1a2e'] },
-  ocean:     { themeType:'ocean', primaryColor:'#0ea5e9', secondaryColor:'#06b6d4', accentColor:'#22d3ee', gradientColors:['#0a0f1a','#0a1a2e','#0a1525'] },
-  celestial: { themeType:'celestial', primaryColor:'#f59e0b', secondaryColor:'#fbbf24', accentColor:'#fde68a', gradientColors:['#1a150a','#2e2510','#1a150a'] },
+  midnight:   { themeType:'midnight', primaryColor:'#c084fc', secondaryColor:'#f472b6', accentColor:'#fbbf24', gradientColors:['#0f0a1a','#1a0a2e','#0f0a1a'] },
+  cosmic:    { themeType:'cosmic', primaryColor:'#818cf8', secondaryColor:'#a78bfa', accentColor:'#22d3ee', gradientColors:['#0c0a20','#1e1b4b','#0c1445'] },
+  inferno:   { themeType:'inferno', primaryColor:'#f87171', secondaryColor:'#fb923c', accentColor:'#fbbf24', gradientColors:['#1a0a0a','#2d0a0a','#1a0505'] },
+  crimson:   { themeType:'crimson', primaryColor:'#fb7185', secondaryColor:'#f43f5e', accentColor:'#fda4af', gradientColors:['#1a0510','#2d0a1a','#1a0510'] },
+  mystic:    { themeType:'mystic', primaryColor:'#a78bfa', secondaryColor:'#e879f9', accentColor:'#5eead4', gradientColors:['#0a0a1a','#1a0a2e','#0a1a2e'] },
+  aurora:    { themeType:'aurora', primaryColor:'#34d399', secondaryColor:'#6ee7b7', accentColor:'#c4b5fd', gradientColors:['#0a1a0a','#0a2e1a','#0a1a2e'] },
+  ocean:     { themeType:'ocean', primaryColor:'#38bdf8', secondaryColor:'#22d3ee', accentColor:'#67e8f9', gradientColors:['#0a0f1a','#0a1a2e','#0a1525'] },
+  celestial: { themeType:'celestial', primaryColor:'#fbbf24', secondaryColor:'#fcd34d', accentColor:'#fef08a', gradientColors:['#1a150a','#2e2510','#1a150a'] },
+  rose:      { themeType:'rose', primaryColor:'#fda4af', secondaryColor:'#f9a8d4', accentColor:'#fecdd3', gradientColors:['#1a0a10','#2d0a15','#1a0a10'] },
+  emerald:   { themeType:'emerald', primaryColor:'#6ee7b7', secondaryColor:'#86efac', accentColor:'#a7f3d0', gradientColors:['#0a1a10','#0a2d15','#0a1a10'] },
+  amethyst:  { themeType:'amethyst', primaryColor:'#d8b4fe', secondaryColor:'#c4b5fd', accentColor:'#e9d5ff', gradientColors:['#120a1a','#1a0a2d','#120a1a'] },
+  sunset:    { themeType:'sunset', primaryColor:'#fdba74', secondaryColor:'#fb923c', accentColor:'#fed7aa', gradientColors:['#1a100a','#2d1a0a','#1a100a'] },
 };
 
 const PRESET_LABELS: Record<string, string> = {
   midnight:'🌙 Midnight', cosmic:'🌌 Cosmic', inferno:'🔥 Inferno', crimson:'🌹 Crimson',
   mystic:'🔮 Mystic', aurora:'🌸 Aurora', ocean:'🌊 Ocean', celestial:'☀ Celestial',
+  rose:'🌷 Rose', emerald:'💎 Emerald', amethyst:'💜 Amethyst', sunset:'🌅 Sunset',
 };
 
 type View = 'login'|'register'|'dashboard'|'chart'|'addProfile'|'customize'|'invitations';
@@ -226,6 +232,12 @@ export default function HomePage() {
                   <span className='text-white/70'>{getPlanetSymbol(as2.body2)} {as2.body2}</span>
                   <span className='text-white/30 ml-auto'>{as2.orb}°</span></div>))}
                 {!(selProfile.aspects||[]).length&&<p className='text-white/30 text-xs'>Sin aspectos</p>}</div></div>
+
+            <div className='backdrop-blur-xl border border-white/10 p-5 md:col-span-2' style={{background:cBg,borderRadius:rad}}>
+              <h3 className='text-white/60 text-xs uppercase tracking-wider mb-3'>Aspectario</h3>
+              <div className='overflow-x-auto'>
+              <AspectarioGrid aspects={(selProfile.aspects||[])} bodies={['Sol','Luna','Mercurio','Venus','Marte','Jupiter','Saturno','Urano','Neptuno','Pluton','Asc','MC']} primaryColor={p} />
+              </div></div>
             {el&&(<div className='backdrop-blur-xl border border-white/10 p-5' style={{background:cBg,borderRadius:rad}}>
               <h3 className='text-white/60 text-xs uppercase tracking-wider mb-3'>Elementos</h3>
               <div className='space-y-2'>{([['🔥','Fuego',el.Fire],['🌍','Tierra',el.Earth],['🌬','Aire',el.Air],['💧','Agua',el.Water]] as const).map(([em,lb,cn])=>(
