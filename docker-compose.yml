@@ -1,0 +1,162 @@
+# ==============================================================================
+# ASTRAL FAMILY - SELF-HOSTED PRODUCTION STACK
+# PostgreSQL 16 + Standalone Next.js 16 + WebSocket Realtime + Nginx + Backups + Cloudflare
+# ==============================================================================
+
+name: astral-family
+
+networks:
+  astral_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Database (Self-Hosted Local PostgreSQL 16)
+  # ----------------------------------------------------------------------------
+  database:
+    image: postgres:16-alpine
+    container_name: astral-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-astral_db}
+      POSTGRES_USER: ${POSTGRES_USER:-astral_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_password_2026}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - astral_network
+    # IMPORTANT: Port 5432 is strictly private and NOT published to the host/internet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-astral_user} -d $${POSTGRES_DB:-astral_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 2. Main Web Application (Next.js Standalone / Astro Engine)
+  # ----------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: astral-web
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-astral_user}:${POSTGRES_PASSWORD:-astral_secure_password_2026}@database:5432/${POSTGRES_DB:-astral_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-astral-family-secret-jwt-key-2026}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      PORT: 3000
+    networks:
+      - astral_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 35s
+
+  # ----------------------------------------------------------------------------
+  # 3. Realtime WebSocket Microservice (Socket.io)
+  # ----------------------------------------------------------------------------
+  realtime:
+    build:
+      context: .
+      dockerfile: docker/realtime/Dockerfile
+    container_name: astral-realtime
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      JWT_SECRET: ${JWT_SECRET:-astral-family-secret-jwt-key-2026}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    networks:
+      - astral_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3003/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 4. Reverse Proxy & Gateway (Nginx)
+  # ----------------------------------------------------------------------------
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: astral-nginx
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      realtime:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    networks:
+      - astral_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 5. Automated PostgreSQL Backups (Daily / Weekly / Monthly Rotation)
+  # ----------------------------------------------------------------------------
+  backup:
+    build:
+      context: .
+      dockerfile: docker/backup/Dockerfile
+    container_name: astral-backup
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-astral_user}
+      POSTGRES_DB: ${POSTGRES_DB:-astral_db}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_password_2026}
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups:/backups
+    networks:
+      - astral_network
+
+  # ----------------------------------------------------------------------------
+  # 6. Cloudflare Tunnel Connector (Zero-Trust / HTTPS Ingress)
+  # ----------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: astral-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      nginx:
+        condition: service_started
+    networks:
+      - astral_network
+    # Run only if token is set or when explicitly enabled
+    profiles:
+      - tunnel
+      - production

@@ -1,4 +1,4 @@
-import { AspectData, AspectType, CHART_POINTS } from '@/types/astrology';
+import { AspectData, AspectType } from '@/types/astrology';
 import { normalizeDegree, getAspectOrb, getAspectAngle } from './utils';
 
 export function calculateAspects(
@@ -9,10 +9,8 @@ export function calculateAspects(
     'conjunction', 'opposition', 'trine', 'square', 'sextile', 'quincunx'
   ];
 
-  // Only check between planets (not all chart points for simplicity)
-  const bodies = positions.filter(p =>
-    !['NorthNode', 'SouthNode', 'Chiron', 'Lilith', 'PartOfFortune'].includes(p.body)
-  );
+  // Exclude redundant points if needed, but include Ascendant, MC, NorthNode, Chiron, Lilith
+  const bodies = positions.filter(p => !['DESC', 'IC', 'PartOfFortune'].includes(p.body));
 
   for (let i = 0; i < bodies.length; i++) {
     for (let j = i + 1; j < bodies.length; j++) {
@@ -23,24 +21,27 @@ export function calculateAspects(
 
       for (const type of aspectTypes) {
         const angle = getAspectAngle(type);
-        const orb = getAspectOrb(type);
+        const maxOrb = getAspectOrb(type);
         const aspectDiff = Math.abs(diff - angle);
 
-        if (aspectDiff <= orb) {
+        if (aspectDiff <= maxOrb) {
           aspects.push({
             body1: bodies[i].body,
             body2: bodies[j].body,
             type,
             angle,
-            orb: Math.round(aspectDiff * 10) / 10,
-            degree1: Math.round(d1 * 10) / 10,
-            degree2: Math.round(d2 * 10) / 10,
+            orb: Math.round(aspectDiff * 100) / 100,
+            degree1: Math.round(d1 * 100) / 100,
+            degree2: Math.round(d2 * 100) / 100,
           });
-          break; // Only take the closest aspect between two bodies
+          break; // Take the closest primary aspect between two bodies
         }
       }
     }
   }
+
+  // Sort aspects by orb ascending (tightest aspects first)
+  aspects.sort((a, b) => a.orb - b.orb);
 
   return aspects;
 }

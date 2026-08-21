@@ -1,0 +1,16 @@
+{
+  "name": "Astral Family",
+  "short_name": "AstralFamily",
+  "description": "Plataforma interactiva de cartas astrales y sinastría familiar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0a1a",
+  "theme_color": "#a855f7",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

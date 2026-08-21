@@ -1,1 +1,146 @@
-export const ZODIAC_SIGNS = [    'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',    'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'] as const;export type ZodiacSign = (typeof ZODIAC_SIGNS)[number];export const PLANETS = [    'Sun', 'Moon', 'Mercury', 'Venus', 'Mars',    'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'] as const;export type Planet = (typeof PLANETS)[number];export const ASPECT_TYPES = [    'conjunction', 'opposition', 'trine', 'square', 'sextile', 'quincunx'] as const;export type AspectType = (typeof ASPECT_TYPES)[number];export const ELEMENTS = ['Fire', 'Earth', 'Air', 'Water'] as const;export type Element = (typeof ELEMENTS)[number];export const MODALITIES = ['Cardinal', 'Fixed', 'Mutable'] as const;export type Modality = (typeof MODALITIES)[number];export const CHART_POINTS = [    'Ascendant', 'MC', 'DESC', 'IC', 'NorthNode', 'SouthNode',    'Chiron', 'Lilith', 'PartOfFortune'] as const;export type ChartPointName = (typeof CHART_POINTS)[number];export interface PlanetaryPosition {  body: Planet;  sign: ZodiacSign;  degree: number;  minute: number;  absoluteDegree: number;  retrograde: boolean;  house?: number;}export interface HouseData {  houseNumber: number;  sign: ZodiacSign;  degree: number;  minute: number;  absoluteDegree: number;  planets: string[];}export interface AspectData {  body1: string;  body2: string;  type: AspectType;  angle: number;  orb: number;  degree1: number;  degree2: number;}export interface ChartPointData {  point: ChartPointName;  sign: ZodiacSign;  degree: number;  minute: number;  absoluteDegree: number;  house?: number;}export interface ElementDistribution {  Fire: number;  Earth: number;  Air: number;  Water: number;  dominant: Element;  least: Element;}export interface ModalityDistribution {  Cardinal: number;  Fixed: number;  Mutable: number;  dominant: Modality;  least: Modality;}export interface FullChartData {  planetaryPositions: PlanetaryPosition[];  houses: HouseData[];  aspects: AspectData[];  chartPoints: ChartPointData[];  elements: ElementDistribution;  modalities: ModalityDistribution;}export interface BirthData {  birthDate: string;  birthTime: string | null;  timeUnknown: boolean;  latitude: number;  longitude: number;  timezone: string;}
+export const ZODIAC_SIGNS = [
+  'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
+  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'
+] as const;
+export type ZodiacSign = (typeof ZODIAC_SIGNS)[number];
+
+export const PLANETS = [
+  'Sun', 'Moon', 'Mercury', 'Venus', 'Mars',
+  'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'
+] as const;
+export type Planet = (typeof PLANETS)[number];
+
+export const ASPECT_TYPES = [
+  'conjunction', 'opposition', 'trine', 'square', 'sextile', 'quincunx'
+] as const;
+export type AspectType = (typeof ASPECT_TYPES)[number];
+
+export const ELEMENTS = ['Fire', 'Earth', 'Air', 'Water'] as const;
+export type Element = (typeof ELEMENTS)[number];
+
+export const MODALITIES = ['Cardinal', 'Fixed', 'Mutable'] as const;
+export type Modality = (typeof MODALITIES)[number];
+
+export const CHART_POINTS = [
+  'Ascendant', 'MC', 'DESC', 'IC', 'NorthNode', 'SouthNode',
+  'Chiron', 'Lilith', 'PartOfFortune'
+] as const;
+export type ChartPointName = (typeof CHART_POINTS)[number];
+
+export interface PlanetaryPosition {
+  body: Planet;
+  sign: ZodiacSign;
+  degree: number;
+  minute: number;
+  absoluteDegree: number;
+  retrograde: boolean;
+  house?: number;
+}
+
+export interface HouseData {
+  houseNumber: number;
+  sign: ZodiacSign;
+  degree: number;
+  minute: number;
+  absoluteDegree: number;
+  planets: string[];
+}
+
+export interface AspectData {
+  body1: string;
+  body2: string;
+  type: AspectType;
+  angle: number;
+  orb: number;
+  degree1: number;
+  degree2: number;
+}
+
+export interface ChartPointData {
+  point: ChartPointName;
+  sign: ZodiacSign;
+  degree: number;
+  minute: number;
+  absoluteDegree: number;
+  house?: number;
+}
+
+export interface ElementDistribution {
+  Fire: number;
+  Earth: number;
+  Air: number;
+  Water: number;
+  dominant: Element;
+  least: Element;
+}
+
+export interface ModalityDistribution {
+  Cardinal: number;
+  Fixed: number;
+  Mutable: number;
+  dominant: Modality;
+  least: Modality;
+}
+
+export interface FullChartData {
+  birthData?: BirthData;
+  planetaryPositions: PlanetaryPosition[];
+  houses: HouseData[];
+  aspects: AspectData[];
+  chartPoints: ChartPointData[];
+  elements: ElementDistribution;
+  modalities: ModalityDistribution;
+  ascendantSign?: ZodiacSign;
+  mcSign?: ZodiacSign;
+  sunSign?: ZodiacSign;
+  moonSign?: ZodiacSign;
+}
+
+export interface BirthData {
+  birthDate: string;
+  birthTime: string | null;
+  timeUnknown?: boolean;
+  city?: string;
+  country?: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+}
+
+export interface SynastryAspect {
+  body1: string;
+  body2: string;
+  type: AspectType;
+  angle: number;
+  orb: number;
+  degree1: number;
+  degree2: number;
+  harmony: 'harmonic' | 'tense' | 'neutral';
+}
+
+export interface SynastryResult {
+  profileAName: string;
+  profileBName: string;
+  aspects: SynastryAspect[];
+  harmonicCount: number;
+  tenseCount: number;
+  neutralCount: number;
+  compatibilityScore: number; // 0 to 100
+  dominantDynamic: string;
+}
+
+export interface TransitAspect {
+  transitBody: string;
+  natalBody: string;
+  type: AspectType;
+  angle: number;
+  orb: number;
+  transitDegree: number;
+  natalDegree: number;
+}
+
+export interface TransitResult {
+  transitDate: string;
+  transitPositions: PlanetaryPosition[];
+  aspects: TransitAspect[];
+}

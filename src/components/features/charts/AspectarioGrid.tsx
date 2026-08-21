@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { getAspectSymbol, getPlanetSymbol } from '@/services/astrology/utils';
 
 interface AspectData {
   body1: string;
@@ -8,75 +9,88 @@ interface AspectData {
   orb: number;
 }
 
-const ASPECT_LETTERS: Record<string, string> = {
-  conjunction: 'q', opposition: 'w', sextile: 'e',
-  trine: 'r', square: 't', quincunx: 'y',
-};
-
 const BODY_LABELS: Record<string, string> = {
   Sun: 'Sol', Moon: 'Luna', Mercury: 'Mercurio', Venus: 'Venus',
-  Mars: 'Marte', Jupiter: 'Jupiter', Saturn: 'Saturno',
-  Uranus: 'Urano', Neptune: 'Neptuno', Pluto: 'Pluton',
-  Ascendant: 'Asc', MC: 'MC', NorthNode: 'NN',
+  Mars: 'Marte', Jupiter: 'Júpiter', Saturn: 'Saturno',
+  Uranus: 'Urano', Neptune: 'Neptuno', Pluto: 'Plutón',
+  Ascendant: 'AC', MC: 'MC', NorthNode: 'Nodo N.', Chiron: 'Quirón',
 };
 
-const BODY_SYMBOLS: Record<string, string> = {
-  Sun: 'Q', Moon: 'W', Mercury: 'E', Venus: 'R', Mars: 'T',
-  Jupiter: 'Y', Saturn: 'U', Uranus: 'I', Neptune: 'O', Pluto: '...',
-  Ascendant: 'Z', MC: 'X',
-};
+const DEFAULT_BODIES = [
+  'Sun', 'Moon', 'Mercury', 'Venus', 'Mars',
+  'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto',
+  'Ascendant', 'MC'
+];
 
-export default function AspectarioGrid({ aspects, bodies, primaryColor }: { aspects: AspectData[]; bodies: string[]; primaryColor: string }) {
-  // Build matrix
-  const matrix: Record<string, Record<string, string>> = {};
-  for (const row of bodies) {
-    matrix[row] = {};
-    for (const col of bodies) {
-      if (row === col) {
-        matrix[row][col] = BODY_SYMBOLS[row] || row.charAt(0);
-      }
-    }
+export default function AspectarioGrid({
+  aspects,
+  bodies = DEFAULT_BODIES,
+  primaryColor = '#a855f7',
+}: {
+  aspects: AspectData[];
+  bodies?: string[];
+  primaryColor?: string;
+}) {
+  // Build lookup matrix for aspect between any pair
+  const aspectMap: Record<string, { type: string; orb: number }> = {};
+  for (const a of aspects || []) {
+    aspectMap[`${a.body1}-${a.body2}`] = { type: a.type, orb: a.orb };
+    aspectMap[`${a.body2}-${a.body1}`] = { type: a.type, orb: a.orb };
   }
 
-  for (const asp of aspects) {
-    const b1 = BODY_LABELS[asp.body1] || asp.body1;
-    const b2 = BODY_LABELS[asp.body2] || asp.body2;
-    if (matrix[b1] && matrix[b1][b2] !== undefined && matrix[b1][b2] !== BODY_SYMBOLS[b1]) {
-      matrix[b1][b2] = ASPECT_LETTERS[asp.type] || asp.type.charAt(0);
-    }
-    if (matrix[b2] && matrix[b2][b1] !== undefined && matrix[b2][b1] !== BODY_SYMBOLS[b2]) {
-      matrix[b2][b1] = ASPECT_LETTERS[asp.type] || asp.type.charAt(0);
-    }
-  }
+  const getAspectColor = (type: string) => {
+    if (type === 'trine' || type === 'sextile') return '#10b981'; // Green
+    if (type === 'square' || type === 'opposition') return '#ef4444'; // Red
+    if (type === 'conjunction') return primaryColor; // Primary
+    return '#f59e0b'; // Amber
+  };
 
   return (
-    <div className='min-w-[400px]'>
-      <table className='w-full text-[10px] border-collapse'>
+    <div className="overflow-x-auto w-full max-w-full select-none">
+      <table className="w-full text-center border-collapse text-[10px]">
         <thead>
-          <tr>
-            <th className='text-white/40 text-left p-1.5 w-16 font-normal'>Planetas</th>
+          <tr className="border-b border-white/10">
+            <th className="py-1 px-1.5 text-left text-[10px] font-medium text-white/50 w-16">Planeta</th>
             {bodies.map(b => (
-              <th key={b} className='text-white/50 p-1.5 font-normal'>{b === 'Asc' ? '↑' : b === 'MC' ? '☼' : ''}{b}</th>
+              <th key={b} className="p-0.5 text-[10px] font-medium text-white/70 min-w-[20px]">
+                <span title={BODY_LABELS[b] || b}>{getPlanetSymbol(b)}</span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {bodies.map(row => (
-            <tr key={row} className='border-t border-white/5'>
-              <td className='text-white/60 p-1.5 font-medium' style={{color: primaryColor}}>
-                {row === 'Asc' ? '↑' : row === 'MC' ? '☼' : ''}{row}
+          {bodies.map((rowBody, rowIndex) => (
+            <tr key={rowBody} className="border-b border-white/5 hover:bg-white/[0.03]">
+              <td className="py-1 px-1.5 text-left font-medium text-white/80 flex items-center gap-1">
+                <span style={{ color: primaryColor }}>{getPlanetSymbol(rowBody)}</span>
+                <span className="text-[10px] truncate">{BODY_LABELS[rowBody] || rowBody}</span>
               </td>
-              {bodies.map(col => (
-                <td key={col} className='p-1.5 text-center'>
-                  {matrix[row]?.[col] && matrix[row][col] !== BODY_SYMBOLS[row] ? (
-                    <span style={{
-                      color: matrix[row][col] === 't' || matrix[row][col] === 'w' ? '#ef4444' :
-                             matrix[row][col] === 'r' || matrix[row][col] === 'e' ? '#22c55e' :
-                             primaryColor
-                    }}>{matrix[row][col]}</span>
-                  ) : null}
-                </td>
-              ))}
+              {bodies.map((colBody, colIndex) => {
+                if (rowIndex === colIndex) {
+                  return (
+                    <td key={colBody} className="p-0.5 bg-white/5 text-white/20 text-[9px]">
+                      —
+                    </td>
+                  );
+                }
+
+                // Lower triangle aspect display
+                const asp = aspectMap[`${rowBody}-${colBody}`];
+                if (!asp) {
+                  return <td key={colBody} className="p-0.5 text-white/10">·</td>;
+                }
+
+                return (
+                  <td
+                    key={colBody}
+                    className="p-0.5 font-bold transition-transform hover:scale-125 cursor-pointer"
+                    title={`${BODY_LABELS[rowBody] || rowBody} ${asp.type} ${BODY_LABELS[colBody] || colBody} (orbe: ${asp.orb}°)`}
+                    style={{ color: getAspectColor(asp.type) }}
+                  >
+                    <span className="text-xs">{getAspectSymbol(asp.type)}</span>
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

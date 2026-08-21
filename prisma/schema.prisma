@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -14,6 +14,11 @@ model User {
   passwordHash String
   role         String   @default("member") // "admin" | "member"
   avatar       String?
+  birthDate    String?  // YYYY-MM-DD
+  birthTime    String?  // HH:MM
+  city         String?
+  country      String?
+  timezone     String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -23,6 +28,10 @@ model User {
   birthProfiles  BirthProfile[]
   invitations    Invitation[]
   activityEvents ActivityEvent[]
+  invitationUsages InvitationUsage[]
+
+  @@index([email])
+  @@index([role])
 }
 
 model Invitation {
@@ -36,6 +45,23 @@ model Invitation {
   createdAt    DateTime  @default(now())
 
   creator User @relation(fields: [createdBy], references: [id])
+  usages  InvitationUsage[]
+
+  @@index([code])
+  @@index([createdBy])
+}
+
+model InvitationUsage {
+  id           String   @id @default(cuid())
+  invitationId String
+  userId       String
+  usedAt       DateTime @default(now())
+
+  invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId])
+  @@index([userId])
 }
 
 model BirthProfile {
@@ -50,15 +76,38 @@ model BirthProfile {
   longitude     Float
   timezone      String
   createdBy     String
+  parentId      String?  // Parent 1 (Father / Mother) Profile ID (optional)
+  parent2Id     String?  // Parent 2 (Father / Mother) Profile ID (optional)
+  partnerId     String?  // Partner / Spouse Profile ID (optional)
+  siblingId     String?  // Sibling Profile ID (optional)
   isCalculated  Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  parent        BirthProfile?   @relation("Parent1Children", fields: [parentId], references: [id], onDelete: SetNull)
+  children1     BirthProfile[]  @relation("Parent1Children")
+
+  parent2       BirthProfile?   @relation("Parent2Children", fields: [parent2Id], references: [id], onDelete: SetNull)
+  children2     BirthProfile[]  @relation("Parent2Children")
+
+  partner       BirthProfile?   @relation("FamilyPartners", fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerOf     BirthProfile[]  @relation("FamilyPartners")
+
+  sibling       BirthProfile?   @relation("FamilySiblings", fields: [siblingId], references: [id], onDelete: SetNull)
+  siblingOf     BirthProfile[]  @relation("FamilySiblings")
 
   creator       User            @relation(fields: [createdBy], references: [id])
   planetaryPositions PlanetaryPosition[]
   houses        House[]
   aspects       Aspect[]
   chartPoints   ChartPoint[]
+
+  @@index([createdBy])
+  @@index([parentId])
+  @@index([parent2Id])
+  @@index([partnerId])
+  @@index([siblingId])
+  @@index([createdAt])
 }
 
 model PlanetaryPosition {
@@ -74,6 +123,7 @@ model PlanetaryPosition {
   birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
 
   @@unique([birthProfileId, body])
+  @@index([birthProfileId])
 }
 
 model House {
@@ -87,6 +137,7 @@ model House {
   birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
 
   @@unique([birthProfileId, houseNumber])
+  @@index([birthProfileId])
 }
 
 model Aspect {
@@ -101,6 +152,8 @@ model Aspect {
   degree2        Float
 
   birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
+
+  @@index([birthProfileId])
 }
 
 model ChartPoint {
@@ -115,6 +168,7 @@ model ChartPoint {
   birthProfile BirthProfile @relation(fields: [birthProfileId], references: [id], onDelete: Cascade)
 
   @@unique([birthProfileId, point])
+  @@index([birthProfileId])
 }
 
 model ThemeSettings {
@@ -124,8 +178,9 @@ model ThemeSettings {
   primaryColor    String   @default("#a855f7")
   secondaryColor  String   @default("#ec4899")
   accentColor     String   @default("#f59e0b")
-  backgroundType  String   @default("gradient") // solid, gradient, custom-gradient
+  backgroundType  String   @default("gradient") // dynamic, gradient, custom-gradient, image, solid
   backgroundColor  String?  // for solid
+  backgroundImage  String?  // for custom background image URL
   gradientColors  String   @default("[\"#0f0a1a\",\"#1a0a2e\",\"#0f0a1a\"]")
   cardOpacity     Float    @default(0.85)
   borderRadius    Float    @default(12)
@@ -145,4 +200,7 @@ model ActivityEvent {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
 }
