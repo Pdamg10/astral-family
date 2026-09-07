@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# env files & API keys
+.env
+.env.*
+.env*.local
+*.env
 !.env.example
 
 # Databases & Backups
@@ -43,10 +46,10 @@ yarn-error.log*
 prisma/*.db*
 prisma/*.sqlite*
 postgres_data/
-backups/*.sql
-backups/*.sql.gz
-backups/*.json
+backups/*
 !backups/.gitkeep
+db/*
+!db/.gitkeep
 
 # Secrets, keys and credentials
 *.pem
@@ -56,6 +59,8 @@ backups/*.json
 credentials.json
 token.json
 service-account*.json
+*.token
+*.secret
 
 # vercel & build
 .vercel

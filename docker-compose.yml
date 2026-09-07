@@ -22,9 +22,9 @@ services:
     container_name: astral-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-astral_db}
-      POSTGRES_USER: ${POSTGRES_USER:-astral_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_password_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-astral_family}
+      POSTGRES_USER: ${POSTGRES_USER:-astral_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_pg_password_2026}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -32,7 +32,7 @@ services:
       - astral_network
     # IMPORTANT: Port 5432 is strictly private and NOT published to the host/internet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-astral_user} -d $${POSTGRES_DB:-astral_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-astral_admin} -d $${POSTGRES_DB:-astral_family}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,7 +52,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-astral_user}:${POSTGRES_PASSWORD:-astral_secure_password_2026}@database:5432/${POSTGRES_DB:-astral_db}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-astral_admin}:${POSTGRES_PASSWORD:-astral_secure_pg_password_2026}@database:5432/${POSTGRES_DB:-astral_family}?schema=public
       JWT_SECRET: ${JWT_SECRET:-astral-family-secret-jwt-key-2026}
       NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:8080}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
@@ -132,9 +132,9 @@ services:
     environment:
       POSTGRES_HOST: database
       POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-astral_user}
-      POSTGRES_DB: ${POSTGRES_DB:-astral_db}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_password_2026}
+      POSTGRES_USER: ${POSTGRES_USER:-astral_admin}
+      POSTGRES_DB: ${POSTGRES_DB:-astral_family}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astral_secure_pg_password_2026}
       BACKUP_DIR: /backups
     volumes:
       - ./backups:/backups

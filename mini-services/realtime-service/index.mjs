@@ -11,7 +11,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : ['http://localhost:3000', 'http://127.0.0.1:3000', '*'];
 
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/healthz') {
+  if (req.url && (req.url.startsWith('/health') || req.url === '/')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'healthy',
@@ -21,6 +21,8 @@ const httpServer = createServer((req, res) => {
     }));
     return;
   }
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not Found');
 });
 const io = new Server(httpServer, {
   path: '/',
@@ -95,7 +97,7 @@ io.on('connection', (socket) => {
 });
 
 const PORT = 3003;
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`[Realtime] Astral Realtime Service running on port ${PORT}`);
 });
 
