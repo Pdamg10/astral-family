@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { findCityLocation } from '@/lib/cities';
+import { calculateFullChart } from '@/services/astrology/chart';
+import { replaceProfileChartData } from '@/services/astrology/profileSync';
 
 const profileInclude = {
   planetaryPositions: true,
@@ -190,10 +192,8 @@ function formatProfile(p: any, rawProfiles: any[] = []) {
 
 export async function GET(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
 
     const rawProfiles = await db.birthProfile.findMany({
       include: profileInclude,
@@ -211,10 +211,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { name, birthDate, birthTime, timeUnknown, city, country, latitude, longitude, timezone, parentId, parent2Id, partnerId, siblingId } = body;
@@ -282,7 +281,6 @@ export async function POST(request: NextRequest) {
     });
 
     // Calculate chart
-    const { calculateFullChart } = await import('@/services/astrology/chart');
     const chartData = await calculateFullChart({
       birthDate,
       birthTime: timeUnknown ? '12:00' : birthTime || '12:00',
@@ -296,60 +294,7 @@ export async function POST(request: NextRequest) {
 
     // Save all astrological data in atomic transaction
     await db.$transaction(async (tx) => {
-      if (chartData.planetaryPositions?.length) {
-        await tx.planetaryPosition.createMany({
-          data: chartData.planetaryPositions.map((pos) => ({
-            birthProfileId: profile.id,
-            body: pos.body,
-            sign: pos.sign,
-            degree: pos.degree,
-            minute: pos.minute,
-            retrograde: pos.retrograde || false,
-            house: pos.house || 1,
-          })),
-        });
-      }
-
-      if (chartData.houses?.length) {
-        await tx.house.createMany({
-          data: chartData.houses.map((house) => ({
-            birthProfileId: profile.id,
-            houseNumber: house.houseNumber,
-            sign: house.sign,
-            degree: house.degree,
-            minute: house.minute,
-          })),
-        });
-      }
-
-      if (chartData.chartPoints?.length) {
-        await tx.chartPoint.createMany({
-          data: chartData.chartPoints.map((cp) => ({
-            birthProfileId: profile.id,
-            point: cp.point,
-            sign: cp.sign,
-            degree: cp.degree,
-            minute: cp.minute,
-            house: cp.house || 1,
-          })),
-        });
-      }
-
-      if (chartData.aspects?.length) {
-        await tx.aspect.createMany({
-          data: chartData.aspects.map((asp) => ({
-            birthProfileId: profile.id,
-            body1: asp.body1,
-            body2: asp.body2,
-            type: asp.type,
-            angle: asp.angle,
-            orb: asp.orb,
-            degree1: asp.degree1,
-            degree2: asp.degree2,
-          })),
-        });
-      }
-
+      await replaceProfileChartData(tx, profile.id, chartData, false);
       await tx.birthProfile.update({
         where: { id: profile.id },
         data: { isCalculated: true },
@@ -372,10 +317,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { id, name, birthDate, birthTime, timeUnknown, city, country, latitude, longitude, timezone, parentId, parent2Id, partnerId, siblingId } = body;
@@ -424,7 +368,6 @@ export async function PUT(request: NextRequest) {
       timezone || existing.timezone
     );
 
-    const { calculateFullChart } = await import('@/services/astrology/chart');
     const chartData = await calculateFullChart({
       birthDate: updatedBirthDate,
       birthTime: updatedBirthTime || '12:00',
@@ -457,69 +400,15 @@ export async function PUT(request: NextRequest) {
         },
       });
 
-      await tx.planetaryPosition.deleteMany({ where: { birthProfileId: id } });
-      await tx.house.deleteMany({ where: { birthProfileId: id } });
-      await tx.chartPoint.deleteMany({ where: { birthProfileId: id } });
-      await tx.aspect.deleteMany({ where: { birthProfileId: id } });
+      await replaceProfileChartData(tx, id, chartData, true);
 
-      if (chartData.planetaryPositions?.length) {
-        await tx.planetaryPosition.createMany({
-          data: chartData.planetaryPositions.map((pos) => ({
-            birthProfileId: id,
-            body: pos.body,
-            sign: pos.sign,
-            degree: pos.degree,
-            minute: pos.minute,
-            retrograde: pos.retrograde || false,
-            house: pos.house || 1,
-          })),
-        });
-      }
-
-      if (chartData.houses?.length) {
-        await tx.house.createMany({
-          data: chartData.houses.map((house) => ({
-            birthProfileId: id,
-            houseNumber: house.houseNumber,
-            sign: house.sign,
-            degree: house.degree,
-            minute: house.minute,
-          })),
-        });
-      }
-
-      if (chartData.chartPoints?.length) {
-        await tx.chartPoint.createMany({
-          data: chartData.chartPoints.map((cp) => ({
-            birthProfileId: id,
-            point: cp.point,
-            sign: cp.sign,
-            degree: cp.degree,
-            minute: cp.minute,
-            house: cp.house || 1,
-          })),
-        });
-      }
-
-      if (chartData.aspects?.length) {
-        await tx.aspect.createMany({
-          data: chartData.aspects.map((asp) => ({
-            birthProfileId: id,
-            body1: asp.body1,
-            body2: asp.body2,
-            type: asp.type,
-            angle: asp.angle,
-            orb: asp.orb,
-            degree1: asp.degree1,
-            degree2: asp.degree2,
-          })),
-        });
-      }
-
-      // Sync matching User if one exists
+      // Sync User record only if this profile matches the creator's own name (avoid overwriting admin user when editing relatives)
       if (existing.createdBy) {
         await tx.user.updateMany({
-          where: { id: existing.createdBy },
+          where: {
+            id: existing.createdBy,
+            name: existing.name,
+          },
           data: {
             name: updatedName,
             birthDate: updatedBirthDate,
@@ -548,10 +437,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

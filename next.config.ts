@@ -2,10 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  reactStrictMode: false,
+  allowedDevOrigins: ["10.46.1.120", "localhost", "127.0.0.1"],
   async headers() {
     return [
       {

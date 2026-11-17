@@ -737,9 +737,9 @@ export default function ThemeSelector({
 
             {/* Deep Galaxy Wallpaper */}
             <div
-              onClick={() => applyBackgroundImage('/background.jpg')}
+              onClick={() => applyBackgroundImage('/images/cosmic-bg.jpg')}
               className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                backgroundType === 'image' && backgroundImage === '/background.jpg'
+                backgroundType === 'image' && (backgroundImage === '/images/cosmic-bg.jpg' || backgroundImage === '/background.jpg')
                   ? 'bg-purple-950/40 border-purple-400 ring-2 ring-purple-500/50 shadow-xl'
                   : 'bg-white/5 border-white/10 hover:border-white/20'
               }`}
@@ -747,14 +747,14 @@ export default function ThemeSelector({
               <div className="flex items-center gap-3">
                 <div
                   className="w-11 h-11 rounded-lg bg-cover bg-center border border-white/20 shadow-md"
-                  style={{ backgroundImage: 'url(/background.jpg)' }}
+                  style={{ backgroundImage: 'url(/images/cosmic-bg.jpg)' }}
                 />
                 <div>
                   <h4 className="text-white font-medium text-xs">🪐 Nebulosa Mística</h4>
                   <p className="text-white/50 text-[10px]">Fondo galáctico estrellado</p>
                 </div>
               </div>
-              {backgroundType === 'image' && backgroundImage === '/background.jpg' && (
+              {backgroundType === 'image' && (backgroundImage === '/images/cosmic-bg.jpg' || backgroundImage === '/background.jpg') && (
                 <span
                   className="px-2 py-0.5 rounded-full text-white text-[10px] font-bold"
                   style={{ background: primaryColor }}

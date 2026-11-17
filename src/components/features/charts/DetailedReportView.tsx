@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import type { BirthProfile } from '@/types/prisma-types';
-import { getPlanetSymbol, getSignEmoji, formatDegreeMinute, getAspectSymbol } from '@/services/astrology/utils';
+import { getPlanetSymbol, getSignEmoji, formatDegreeMinute, getAspectSymbol, calculateAge } from '@/services/astrology/utils';
 import { generateAstrologicalReport } from '@/services/astrology/interpretations';
 import AspectarioGrid from './AspectarioGrid';
 import DecanateCard from './DecanateCard';
@@ -58,35 +58,25 @@ export default function DetailedReportView({
     chartPoints: profile.chartPoints || [],
   });
 
-  function calculateAge(birthDateStr?: string): number {
-    if (!birthDateStr) return 0;
-    const birth = new Date(birthDateStr);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
-  }
-
   const profileAge = calculateAge(profile.birthDate);
+  const chatMessagesRef = useRef<ChatMessage[]>(chatMessages);
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages;
+  }, [chatMessages]);
+
   useEffect(() => {
     if (activeTab === 'ai') {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, isAiLoading, activeTab]);
 
-  // Initial Welcome synthesis message from Astro.IA on first tab open
-  useEffect(() => {
-    if (activeTab === 'ai' && chatMessages.length === 0 && !isAiLoading) {
-      sendMessage(undefined, true);
-    }
-  }, [activeTab]);
-
-  const sendMessage = async (customQuery?: string, isInitial: boolean = false) => {
+  const sendMessage = async (customQuery?: string, isInitial: boolean = false, resetHistory: boolean = false) => {
     const queryToSend = customQuery || inputText.trim();
     if (!isInitial && !queryToSend) return;
+
+    const history = resetHistory
+      ? []
+      : chatMessagesRef.current.map(m => ({ role: m.role, content: m.content }));
 
     if (!isInitial) {
       const userMsg: ChatMessage = {
@@ -104,7 +94,6 @@ export default function DetailedReportView({
 
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('astral_token') : null;
-      const history = chatMessages.map(m => ({ role: m.role, content: m.content }));
 
       const res = await fetch('/api/astrology/ai-reading', {
         method: 'POST',
@@ -148,9 +137,17 @@ export default function DetailedReportView({
     }
   };
 
+  // Initial Welcome synthesis message from Astro.IA on first tab open
+  useEffect(() => {
+    if (activeTab === 'ai' && chatMessagesRef.current.length === 0 && !isAiLoading) {
+      sendMessage(undefined, true);
+    }
+  }, [activeTab]);
+
   const handleResetChat = () => {
     setChatMessages([]);
-    sendMessage(undefined, true);
+    chatMessagesRef.current = [];
+    sendMessage(undefined, true, true);
   };
 
   const promptSuggestions = [

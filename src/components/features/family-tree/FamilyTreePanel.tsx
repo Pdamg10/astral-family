@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import type { BirthProfile } from '@/types/prisma-types';
 import type { SynastryResult } from '@/types/astrology';
 import { calculateSynastry } from '@/services/astrology/synastry';
-import { getPlanetSymbol, getAspectSymbol, getSignEmoji } from '@/services/astrology/utils';
+import { getPlanetSymbol, getAspectSymbol, getSignEmoji, signToAbsoluteDegree, calculateAge } from '@/services/astrology/utils';
 
 interface FamilyTreePanelProps {
   profiles: BirthProfile[];
@@ -20,29 +20,6 @@ interface FamilyTreePanelProps {
   onAddChild?: (parentProfileId?: string) => void;
   onAddPartner?: (profileId?: string) => void;
   onAddSibling?: (profileId?: string) => void;
-}
-
-function signToAbs(sign: string, deg: number): number {
-  const signs = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
-  const i = signs.indexOf(sign);
-  return i >= 0 ? i * 30 + deg : deg;
-}
-
-function calculateAge(birthDateStr?: string): number {
-  if (!birthDateStr) return 0;
-  try {
-    const birth = new Date(birthDateStr);
-    if (isNaN(birth.getTime())) return 0;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age > 0 ? age : 0;
-  } catch {
-    return 0;
-  }
 }
 
 export default function FamilyTreePanel({
@@ -123,11 +100,11 @@ export default function FamilyTreePanel({
 
     const posA = profA.planetaryPositions.map((pp: any) => ({
       body: pp.body, sign: pp.sign, degree: pp.degree, minute: pp.minute,
-      absoluteDegree: signToAbs(pp.sign, pp.degree), retrograde: pp.retrograde,
+      absoluteDegree: signToAbsoluteDegree(pp.sign, pp.degree, pp.minute), retrograde: pp.retrograde,
     }));
     const posB = profB.planetaryPositions.map((pp: any) => ({
       body: pp.body, sign: pp.sign, degree: pp.degree, minute: pp.minute,
-      absoluteDegree: signToAbs(pp.sign, pp.degree), retrograde: pp.retrograde,
+      absoluteDegree: signToAbsoluteDegree(pp.sign, pp.degree, pp.minute), retrograde: pp.retrograde,
     }));
     return calculateSynastry(profA.name, posA, profB.name, posB);
   }, [profiles, synAId, synBId]);
@@ -527,10 +504,10 @@ export default function FamilyTreePanel({
                         <button
                           onClick={() => onLinkFamily(member.id)}
                           className="py-1.5 px-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/30 text-xs font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-                          title={`Vincular parentesco (pareja, hermano, padre, hijo) para ${member.name}`}
+                          title={`Agregar, editar o quitar vínculos familiares de ${member.name}`}
                         >
                           <span>🔗</span>
-                          <span>+ Vincular Familiar</span>
+                          <span>Gestionar Vínculos</span>
                         </button>
                       ) : (
                         <>

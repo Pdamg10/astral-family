@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const theme = await db.themeSettings.findUnique({ where: { userId: payload.userId } });
     if (!theme) {
@@ -23,10 +22,9 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const {
@@ -35,43 +33,28 @@ export async function PUT(request: NextRequest) {
       cardOpacity, borderRadius, shadowIntensity, textSize, infoDensity,
     } = body;
 
+    const themeFields = {
+      ...(themeType !== undefined && { themeType }),
+      ...(primaryColor !== undefined && { primaryColor }),
+      ...(secondaryColor !== undefined && { secondaryColor }),
+      ...(accentColor !== undefined && { accentColor }),
+      ...(backgroundType !== undefined && { backgroundType }),
+      ...(backgroundColor !== undefined && { backgroundColor }),
+      ...(backgroundImage !== undefined && { backgroundImage }),
+      ...(gradientColors !== undefined && {
+        gradientColors: typeof gradientColors === 'string' ? gradientColors : JSON.stringify(gradientColors),
+      }),
+      ...(cardOpacity !== undefined && { cardOpacity }),
+      ...(borderRadius !== undefined && { borderRadius }),
+      ...(shadowIntensity !== undefined && { shadowIntensity }),
+      ...(textSize !== undefined && { textSize }),
+      ...(infoDensity !== undefined && { infoDensity }),
+    };
+
     const theme = await db.themeSettings.upsert({
       where: { userId: payload.userId },
-      update: {
-        ...(themeType !== undefined && { themeType }),
-        ...(primaryColor !== undefined && { primaryColor }),
-        ...(secondaryColor !== undefined && { secondaryColor }),
-        ...(accentColor !== undefined && { accentColor }),
-        ...(backgroundType !== undefined && { backgroundType }),
-        ...(backgroundColor !== undefined && { backgroundColor }),
-        ...(backgroundImage !== undefined && { backgroundImage }),
-        ...(gradientColors !== undefined && {
-          gradientColors: typeof gradientColors === 'string' ? gradientColors : JSON.stringify(gradientColors),
-        }),
-        ...(cardOpacity !== undefined && { cardOpacity }),
-        ...(borderRadius !== undefined && { borderRadius }),
-        ...(shadowIntensity !== undefined && { shadowIntensity }),
-        ...(textSize !== undefined && { textSize }),
-        ...(infoDensity !== undefined && { infoDensity }),
-      },
-      create: {
-        userId: payload.userId,
-        ...(themeType !== undefined && { themeType }),
-        ...(primaryColor !== undefined && { primaryColor }),
-        ...(secondaryColor !== undefined && { secondaryColor }),
-        ...(accentColor !== undefined && { accentColor }),
-        ...(backgroundType !== undefined && { backgroundType }),
-        ...(backgroundColor !== undefined && { backgroundColor }),
-        ...(backgroundImage !== undefined && { backgroundImage }),
-        ...(gradientColors !== undefined && {
-          gradientColors: typeof gradientColors === 'string' ? gradientColors : JSON.stringify(gradientColors),
-        }),
-        ...(cardOpacity !== undefined && { cardOpacity }),
-        ...(borderRadius !== undefined && { borderRadius }),
-        ...(shadowIntensity !== undefined && { shadowIntensity }),
-        ...(textSize !== undefined && { textSize }),
-        ...(infoDensity !== undefined && { infoDensity }),
-      },
+      update: themeFields,
+      create: { userId: payload.userId, ...themeFields },
     });
 
     return NextResponse.json({ theme });

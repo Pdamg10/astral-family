@@ -1,5 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { findCityLocation } from '@/lib/cities';
+import type { FullChartData } from '@/types/astrology';
 import { calculateFullChart } from './chart';
 
 export interface SyncProfileParams {
@@ -12,6 +14,78 @@ export interface SyncProfileParams {
   timezone?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+}
+
+/**
+ * Persists calculated chart child records (planetaryPositions, houses, chartPoints, aspects)
+ * for a BirthProfile inside an existing Prisma transaction.
+ */
+export async function replaceProfileChartData(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  chartData: FullChartData,
+  clearExisting: boolean = true
+) {
+  if (clearExisting) {
+    await tx.planetaryPosition.deleteMany({ where: { birthProfileId: profileId } });
+    await tx.house.deleteMany({ where: { birthProfileId: profileId } });
+    await tx.chartPoint.deleteMany({ where: { birthProfileId: profileId } });
+    await tx.aspect.deleteMany({ where: { birthProfileId: profileId } });
+  }
+
+  if (chartData.planetaryPositions?.length) {
+    await tx.planetaryPosition.createMany({
+      data: chartData.planetaryPositions.map((pos) => ({
+        birthProfileId: profileId,
+        body: pos.body,
+        sign: pos.sign,
+        degree: pos.degree,
+        minute: pos.minute,
+        retrograde: pos.retrograde || false,
+        house: pos.house || 1,
+      })),
+    });
+  }
+
+  if (chartData.houses?.length) {
+    await tx.house.createMany({
+      data: chartData.houses.map((h) => ({
+        birthProfileId: profileId,
+        houseNumber: h.houseNumber,
+        sign: h.sign,
+        degree: h.degree,
+        minute: h.minute,
+      })),
+    });
+  }
+
+  if (chartData.chartPoints?.length) {
+    await tx.chartPoint.createMany({
+      data: chartData.chartPoints.map((cp) => ({
+        birthProfileId: profileId,
+        point: cp.point,
+        sign: cp.sign,
+        degree: cp.degree,
+        minute: cp.minute,
+        house: cp.house || 1,
+      })),
+    });
+  }
+
+  if (chartData.aspects?.length) {
+    await tx.aspect.createMany({
+      data: chartData.aspects.map((asp) => ({
+        birthProfileId: profileId,
+        body1: asp.body1,
+        body2: asp.body2,
+        type: asp.type,
+        angle: asp.angle,
+        orb: asp.orb,
+        degree1: asp.degree1,
+        degree2: asp.degree2,
+      })),
+    });
+  }
 }
 
 /**
@@ -35,7 +109,7 @@ export async function syncUserAndBirthProfile(params: SyncProfileParams) {
   const location = findCityLocation(city, country, latitude, longitude, timezone);
 
   // 2. Find existing birth profile for this user
-  let existingProfile = await db.birthProfile.findFirst({
+  const existingProfile = await db.birthProfile.findFirst({
     where: {
       OR: [
         { createdBy: userId },
@@ -88,12 +162,6 @@ export async function syncUserAndBirthProfile(params: SyncProfileParams) {
           isCalculated: true,
         },
       });
-
-      // Clear existing records before recreation
-      await tx.planetaryPosition.deleteMany({ where: { birthProfileId: profileId } });
-      await tx.house.deleteMany({ where: { birthProfileId: profileId } });
-      await tx.chartPoint.deleteMany({ where: { birthProfileId: profileId } });
-      await tx.aspect.deleteMany({ where: { birthProfileId: profileId } });
     } else {
       const newProfile = await tx.birthProfile.create({
         data: {
@@ -112,63 +180,7 @@ export async function syncUserAndBirthProfile(params: SyncProfileParams) {
       profileId = newProfile.id;
     }
 
-    // Insert planetary positions
-    if (chartData.planetaryPositions?.length) {
-      await tx.planetaryPosition.createMany({
-        data: chartData.planetaryPositions.map((pos) => ({
-          birthProfileId: profileId,
-          body: pos.body,
-          sign: pos.sign,
-          degree: pos.degree,
-          minute: pos.minute,
-          retrograde: pos.retrograde || false,
-          house: pos.house || 1,
-        })),
-      });
-    }
-
-    // Insert houses
-    if (chartData.houses?.length) {
-      await tx.house.createMany({
-        data: chartData.houses.map((h) => ({
-          birthProfileId: profileId,
-          houseNumber: h.houseNumber,
-          sign: h.sign,
-          degree: h.degree,
-          minute: h.minute,
-        })),
-      });
-    }
-
-    // Insert chart points
-    if (chartData.chartPoints?.length) {
-      await tx.chartPoint.createMany({
-        data: chartData.chartPoints.map((cp) => ({
-          birthProfileId: profileId,
-          point: cp.point,
-          sign: cp.sign,
-          degree: cp.degree,
-          minute: cp.minute,
-          house: cp.house || 1,
-        })),
-      });
-    }
-
-    // Insert aspects
-    if (chartData.aspects?.length) {
-      await tx.aspect.createMany({
-        data: chartData.aspects.map((asp) => ({
-          birthProfileId: profileId,
-          body1: asp.body1,
-          body2: asp.body2,
-          type: asp.type,
-          angle: asp.angle,
-          orb: asp.orb,
-          degree1: asp.degree1,
-          degree2: asp.degree2,
-        })),
-      });
-    }
+    await replaceProfileChartData(tx, profileId, chartData, Boolean(existingProfile));
 
     // Also update User record location data to ensure 100% consistency
     await tx.user.update({

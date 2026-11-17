@@ -1,15 +1,17 @@
 import {
   FullChartData,
-  PlanetaryPosition,
-  HouseData,
   AspectData,
   ChartPointData,
   BirthData,
   ChartPointName,
-  Planet,
 } from '@/types/astrology';
-import { calculatePlanetaryPositions } from './ephemeris';
-import { calculateHouses, assignPlanetsToHouses, getHouseForDegree, createOrigin } from './houses';
+import { extractPositionsFromHoroscope } from './ephemeris';
+import {
+  assignPlanetsToHouses,
+  extractHousesFromHoroscope,
+  getHouseForDegree,
+  getHoroscopeInstance,
+} from './houses';
 import { calculateAspects } from './aspects';
 import {
   degreesToSign,
@@ -18,39 +20,27 @@ import {
   getElementDistribution,
   getModalityDistribution,
 } from './utils';
-import HoroscopeModule from 'circular-natal-horoscope-js';
-
-const { Horoscope } = HoroscopeModule;
 
 export async function calculateFullChart(data: BirthData): Promise<FullChartData> {
   const { utcDate } = parseBirthDateTimeToUtc(data.birthDate, data.birthTime, data.timezone);
+  const birthTime = data.birthTime || '12:00';
 
-  // 1. Calculate Houses & Angles (Placidus) using local birth date/time and coordinates
-  const { houses: rawHouses, ascendantDegree, mcDegree } = calculateHouses(
+  // Single Horoscope instance shared for Houses, Planets & Chiron (eliminates 3x redundant calculation)
+  const horoscope = getHoroscopeInstance(
     data.birthDate,
-    data.birthTime || '12:00',
+    birthTime,
     data.latitude,
     data.longitude,
     'placidus'
   );
 
-  // 2. Calculate Planetary Positions
-  const planetaryPositions = calculatePlanetaryPositions(
-    data.birthDate,
-    data.birthTime || '12:00',
-    data.latitude,
-    data.longitude
-  );
+  // 1. Extract Houses & Angles (Placidus)
+  const { houses: rawHouses, ascendantDegree, mcDegree } = extractHousesFromHoroscope(horoscope, 'placidus');
+
+  // 2. Extract Planetary Positions
+  const planetaryPositions = extractPositionsFromHoroscope(horoscope);
 
   // 3. Calculate Chart Points (Chiron, Nodes, Lilith, Part of Fortune, DESC, IC)
-  const origin = createOrigin(data.birthDate, data.birthTime || '12:00', data.latitude, data.longitude);
-  const horoscope = new Horoscope({
-    origin,
-    houseSystem: 'placidus',
-    zodiac: 'tropical',
-  });
-
-  // Chiron
   const chironDeg = horoscope.CelestialBodies?.chiron
     ? normalizeDegree(horoscope.CelestialBodies.chiron.ChartPosition.Ecliptic.DecimalDegrees)
     : 0;

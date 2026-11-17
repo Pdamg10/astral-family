@@ -385,7 +385,7 @@ export default function ProfileSettingsPanel({
                   className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30 text-xs transition-all cursor-pointer flex items-center gap-1.5 font-medium shadow-sm"
                 >
                   <span>🔗</span>
-                  <span>+ Vincular Familiar</span>
+                  <span>Gestionar mis Vínculos</span>
                 </button>
               ) : (
                 <>

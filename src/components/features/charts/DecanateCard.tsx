@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { getDecanateInfo, getDecanNumberFromDegree, DECANATES_DATABASE, canonicalSignName, DecanateInfo } from '@/services/astrology/decanates';
+import { getDecanNumberFromDegree, DECANATES_DATABASE, canonicalSignName, DecanateInfo } from '@/services/astrology/decanates';
 import type { BirthProfile } from '@/types/prisma-types';
 
 interface DecanateCardProps {

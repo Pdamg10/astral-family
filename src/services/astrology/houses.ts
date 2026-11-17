@@ -1,4 +1,4 @@
-import { HouseData, ZodiacSign } from '@/types/astrology';
+import { HouseData, ZODIAC_SIGNS } from '@/types/astrology';
 import { normalizeDegree, degreesToSign } from './utils';
 import HoroscopeModule from 'circular-natal-horoscope-js';
 
@@ -85,34 +85,10 @@ export function getHoroscopeInstance(
   });
 }
 
-export function calculateHouses(
-  dateOrString: Date | string,
-  timeOrLat: string | number,
-  latitudeOrLon?: number,
-  longitudeOrSystem?: number | HouseSystem,
-  system: HouseSystem = 'placidus'
+export function extractHousesFromHoroscope(
+  horoscope: any,
+  houseSystem: HouseSystem = 'placidus'
 ): { houses: HouseData[]; ascendantDegree: number; mcDegree: number } {
-  let houseSystem: HouseSystem = system;
-  let lat = 0;
-  let lon = 0;
-  let timeStr: string | undefined = undefined;
-
-  if (typeof timeOrLat === 'number') {
-    // Signature: (date, latitude, longitude, system)
-    lat = timeOrLat;
-    lon = latitudeOrLon || 0;
-    if (typeof longitudeOrSystem === 'string') {
-      houseSystem = longitudeOrSystem as HouseSystem;
-    }
-  } else {
-    // Signature: (dateString, timeString, latitude, longitude, system)
-    timeStr = timeOrLat;
-    lat = latitudeOrLon || 0;
-    lon = typeof longitudeOrSystem === 'number' ? longitudeOrSystem : 0;
-  }
-
-  const horoscope = getHoroscopeInstance(dateOrString, timeStr || lat, lat, lon, houseSystem);
-
   const ascDeg = normalizeDegree(horoscope.Ascendant.ChartPosition.Ecliptic.DecimalDegrees);
   const mcDeg = normalizeDegree(horoscope.Midheaven.ChartPosition.Ecliptic.DecimalDegrees);
 
@@ -147,10 +123,6 @@ export function calculateHouses(
   } else {
     // Whole Sign
     const ascSignIndex = Math.floor(ascDeg / 30) % 12;
-    const ZODIAC_SIGNS: ZodiacSign[] = [
-      'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
-      'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'
-    ];
     for (let i = 0; i < 12; i++) {
       const signIndex = (ascSignIndex + i) % 12;
       houses.push({
@@ -165,6 +137,36 @@ export function calculateHouses(
   }
 
   return { houses, ascendantDegree: ascDeg, mcDegree: mcDeg };
+}
+
+export function calculateHouses(
+  dateOrString: Date | string,
+  timeOrLat: string | number,
+  latitudeOrLon?: number,
+  longitudeOrSystem?: number | HouseSystem,
+  system: HouseSystem = 'placidus'
+): { houses: HouseData[]; ascendantDegree: number; mcDegree: number } {
+  let houseSystem: HouseSystem = system;
+  let lat = 0;
+  let lon = 0;
+  let timeStr: string | undefined = undefined;
+
+  if (typeof timeOrLat === 'number') {
+    // Signature: (date, latitude, longitude, system)
+    lat = timeOrLat;
+    lon = latitudeOrLon || 0;
+    if (typeof longitudeOrSystem === 'string') {
+      houseSystem = longitudeOrSystem as HouseSystem;
+    }
+  } else {
+    // Signature: (dateString, timeString, latitude, longitude, system)
+    timeStr = timeOrLat;
+    lat = latitudeOrLon || 0;
+    lon = typeof longitudeOrSystem === 'number' ? longitudeOrSystem : 0;
+  }
+
+  const horoscope = getHoroscopeInstance(dateOrString, timeStr || lat, lat, lon, houseSystem);
+  return extractHousesFromHoroscope(horoscope, houseSystem);
 }
 
 export function isDegreeInHouse(degree: number, cuspStart: number, cuspEnd: number): boolean {

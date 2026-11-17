@@ -142,7 +142,8 @@ export default function DynamicCosmicBackground({
     return 'linear-gradient(135deg, #0f0a1a, #1a0a2e, #0f0a1a)';
   })();
 
-  const imageSrc = isImage ? backgroundImage! : '/images/cosmic-bg.jpg';
+  const normalizedBgImage = backgroundImage === '/background.jpg' ? '/images/cosmic-bg.jpg' : backgroundImage;
+  const imageSrc = isImage && normalizedBgImage ? normalizedBgImage : '/images/cosmic-bg.jpg';
 
   return (
     <div

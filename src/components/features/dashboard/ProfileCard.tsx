@@ -2,6 +2,7 @@
 import React from 'react';
 import type { BirthProfile } from '@/types/prisma-types';
 import { getDecanateInfo, getDecanNumberFromDegree } from '@/services/astrology/decanates';
+import { formatBirthDate, calculateAge } from '@/services/astrology/utils';
 
 interface ProfileCardProps {
   profile: BirthProfile;
@@ -12,42 +13,6 @@ interface ProfileCardProps {
   borderRadius: string;
   onSelect: (profile: BirthProfile) => void;
   onLinkFamily?: (profile: BirthProfile) => void;
-  onAddChild?: (parentProfile: BirthProfile) => void;
-  onAddPartner?: (profile: BirthProfile) => void;
-  onAddSibling?: (profile: BirthProfile) => void;
-}
-
-function formatDate(ds?: string): string {
-  if (!ds) return '';
-  try {
-    const parts = ds.includes('-') ? ds.split('-') : ds.split('/');
-    if (parts.length < 3) return ds;
-    const [y, m, d] = parts;
-    const ms = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    const monthIdx = parseInt(m, 10) - 1;
-    const dayNum = parseInt(d, 10);
-    if (isNaN(dayNum) || isNaN(monthIdx) || !ms[monthIdx]) return ds;
-    return `${dayNum} de ${ms[monthIdx]} de ${y}`;
-  } catch {
-    return ds || '';
-  }
-}
-
-function calculateAge(birthDateStr?: string): number {
-  if (!birthDateStr) return 0;
-  try {
-    const birth = new Date(birthDateStr);
-    if (isNaN(birth.getTime())) return 0;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age > 0 ? age : 0;
-  } catch {
-    return 0;
-  }
 }
 
 export default function ProfileCard({
@@ -59,9 +24,6 @@ export default function ProfileCard({
   borderRadius,
   onSelect,
   onLinkFamily,
-  onAddChild,
-  onAddPartner,
-  onAddSibling,
 }: ProfileCardProps) {
   const sun = profile.planetaryPositions?.find((pp: any) => pp.body === 'Sun');
   const moon = profile.planetaryPositions?.find((pp: any) => pp.body === 'Moon');
@@ -104,7 +66,7 @@ export default function ProfileCard({
         <div className="space-y-1.5 text-xs text-white/70">
           <div className="flex justify-between">
             <span className="text-white/40">Nacimiento</span>
-            <span className="font-medium text-white/90">{formatDate(profile.birthDate)}</span>
+            <span className="font-medium text-white/90">{formatBirthDate(profile.birthDate)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/40">Hora</span>
@@ -251,64 +213,20 @@ export default function ProfileCard({
           </div>
         )}
 
-        {(onLinkFamily || onAddChild || onAddPartner || onAddSibling) && (
+        {onLinkFamily && (
           <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-end gap-1.5 flex-wrap">
-            {onLinkFamily ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onLinkFamily(profile);
-                }}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 border border-purple-500/30 transition-all cursor-pointer flex items-center gap-1 font-medium shadow-sm hover:scale-[1.02]"
-                title={`Vincular parentesco para ${profile.name}`}
-              >
-                <span>🔗</span>
-                <span>+ Vincular Familiar</span>
-              </button>
-            ) : (
-              <>
-                {onAddPartner && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddPartner(profile);
-                    }}
-                    className="text-[10px] px-2 py-1 rounded bg-pink-500/10 hover:bg-pink-500/20 text-pink-300 border border-pink-500/20 transition-colors cursor-pointer flex items-center gap-1"
-                    title={`Vincular pareja para ${profile.name}`}
-                  >
-                    <span>💍 + Pareja</span>
-                  </button>
-                )}
-                {onAddSibling && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddSibling(profile);
-                    }}
-                    className="text-[10px] px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/20 transition-colors cursor-pointer flex items-center gap-1"
-                    title={`Agregar hermano/a para ${profile.name}`}
-                  >
-                    <span>👥 + Hermano/a</span>
-                  </button>
-                )}
-                {onAddChild && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddChild(profile);
-                    }}
-                    className="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/10 transition-colors cursor-pointer flex items-center gap-1"
-                    title={`Agregar un hijo/a para ${profile.name}`}
-                  >
-                    <span>👶 + Hijo/a</span>
-                  </button>
-                )}
-              </>
-            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLinkFamily(profile);
+              }}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 border border-purple-500/30 transition-all cursor-pointer flex items-center gap-1 font-medium shadow-sm hover:scale-[1.02]"
+              title={`Agregar, editar o quitar vínculos familiares de ${profile.name}`}
+            >
+              <span>🔗</span>
+              <span>Gestionar Vínculos</span>
+            </button>
           </div>
         )}
       </div>

@@ -5,6 +5,45 @@ import HoroscopeModule from 'circular-natal-horoscope-js';
 
 const { Horoscope } = HoroscopeModule;
 
+const PLANET_KEY_MAP: Record<string, Planet> = {
+  sun: 'Sun',
+  moon: 'Moon',
+  mercury: 'Mercury',
+  venus: 'Venus',
+  mars: 'Mars',
+  jupiter: 'Jupiter',
+  saturn: 'Saturn',
+  uranus: 'Uranus',
+  neptune: 'Neptune',
+  pluto: 'Pluto',
+};
+
+export function extractPositionsFromHoroscope(horoscope: any): PlanetaryPosition[] {
+  const positions: PlanetaryPosition[] = [];
+
+  for (const [key, bodyName] of Object.entries(PLANET_KEY_MAP)) {
+    const celestial = horoscope.CelestialBodies?.[key];
+    if (!celestial) continue;
+
+    const absDeg = normalizeDegree(celestial.ChartPosition.Ecliptic.DecimalDegrees);
+    const signInfo = degreesToSign(absDeg);
+    const houseId = celestial.House?.id ?? undefined;
+    const isRetrograde = Boolean(celestial.isRetrograde);
+
+    positions.push({
+      body: bodyName,
+      sign: signInfo.sign,
+      degree: signInfo.degreeInSign,
+      minute: signInfo.minute,
+      absoluteDegree: absDeg,
+      retrograde: isRetrograde,
+      house: houseId,
+    });
+  }
+
+  return positions;
+}
+
 export function calculatePlanetaryPositions(
   dateOrString: Date | string,
   timeOrLat?: string | number,
@@ -34,40 +73,5 @@ export function calculatePlanetaryPositions(
     zodiac: 'tropical',
   });
 
-  const planetKeyMap: Record<string, Planet> = {
-    sun: 'Sun',
-    moon: 'Moon',
-    mercury: 'Mercury',
-    venus: 'Venus',
-    mars: 'Mars',
-    jupiter: 'Jupiter',
-    saturn: 'Saturn',
-    uranus: 'Uranus',
-    neptune: 'Neptune',
-    pluto: 'Pluto',
-  };
-
-  const positions: PlanetaryPosition[] = [];
-
-  for (const [key, bodyName] of Object.entries(planetKeyMap)) {
-    const celestial = horoscope.CelestialBodies?.[key];
-    if (!celestial) continue;
-
-    const absDeg = normalizeDegree(celestial.ChartPosition.Ecliptic.DecimalDegrees);
-    const signInfo = degreesToSign(absDeg);
-    const houseId = celestial.House?.id ?? undefined;
-    const isRetrograde = Boolean(celestial.isRetrograde);
-
-    positions.push({
-      body: bodyName,
-      sign: signInfo.sign,
-      degree: signInfo.degreeInSign,
-      minute: signInfo.minute,
-      absoluteDegree: absDeg,
-      retrograde: isRetrograde,
-      house: houseId,
-    });
-  }
-
-  return positions;
+  return extractPositionsFromHoroscope(horoscope);
 }

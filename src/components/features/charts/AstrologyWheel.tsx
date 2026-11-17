@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
-import { getSignEmoji, getPlanetSymbol, getAspectSymbol, formatDegreeMinute } from '@/services/astrology/utils';
+import { getSignEmoji, getPlanetSymbol, getAspectSymbol, formatDegreeMinute, getPlanetNameEs } from '@/services/astrology/utils';
+import { ZODIAC_SIGNS } from '@/types/astrology';
 import type { PlanetaryPosition, HouseData, AspectData, ChartPointData, ZodiacSign } from '@/types/astrology';
 
 interface WheelProps {
@@ -29,24 +30,6 @@ const SIGN_COLORS: Record<ZodiacSign, { bg: string; text: string; element: strin
   Capricorn:   { bg: '#334155', text: '#ffffff', element: 'Tierra' },
   Aquarius:    { bg: '#06b6d4', text: '#1e293b', element: 'Aire' },
   Pisces:      { bg: '#0d9488', text: '#ffffff', element: 'Agua' },
-};
-
-const SIGNS: ZodiacSign[] = [
-  'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
-  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'
-];
-
-const SIGN_GLYPHS: Record<ZodiacSign, string> = {
-  Aries: '♈', Taurus: '♉', Gemini: '♊', Cancer: '♋',
-  Leo: '♌', Virgo: '♍', Libra: '♎', Scorpio: '♏',
-  Sagittarius: '♐', Capricorn: '♑', Aquarius: '♒', Pisces: '♓',
-};
-
-const PLANET_NAMES_ES: Record<string, string> = {
-  Sun: 'Sol', Moon: 'Luna', Mercury: 'Mercurio', Venus: 'Venus', Mars: 'Marte',
-  Jupiter: 'Júpiter', Saturn: 'Saturno', Uranus: 'Urano', Neptune: 'Neptuno',
-  Pluto: 'Plutón', NorthNode: 'Nodo Norte', Chiron: 'Quirón', Lilith: 'Luna Negra (Lilith)',
-  Ascendant: 'Ascendente (AC)', MC: 'Medio Cielo (MC)',
 };
 
 export default function AstrologyWheel({
@@ -146,7 +129,7 @@ export default function AstrologyWheel({
   });
 
   // 12 Zodiac Arc Segments
-  const signSegments = SIGNS.map((sign, i) => {
+  const signSegments = ZODIAC_SIGNS.map((sign, i) => {
     const startDeg = i * 30;
     const endDeg = (i + 1) * 30;
     const midDeg = i * 30 + 15;
@@ -162,10 +145,11 @@ export default function AstrologyWheel({
       return { x1: pInner.x, y1: pInner.y, x2: pOut.x, y2: pOut.y };
     });
 
+    const glyph = getSignEmoji(sign);
     return {
       sign,
-      glyph: SIGN_GLYPHS[sign],
-      emoji: getSignEmoji(sign),
+      glyph,
+      emoji: glyph,
       colorInfo: SIGN_COLORS[sign],
       path,
       labelX: labelPos.x,
@@ -204,7 +188,7 @@ export default function AstrologyWheel({
       rimX: rimCoords.x,
       rimY: rimCoords.y,
       symbol: getPlanetSymbol(p.body as any),
-      nameEs: PLANET_NAMES_ES[p.body] || p.body,
+      nameEs: getPlanetNameEs(p.body),
     };
   });
 
@@ -219,7 +203,7 @@ export default function AstrologyWheel({
       x: coords.x,
       y: coords.y,
       symbol: getPlanetSymbol(tp.body as any),
-      nameEs: PLANET_NAMES_ES[tp.body] || tp.body,
+      nameEs: getPlanetNameEs(tp.body),
     };
   });
 

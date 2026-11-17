@@ -1,37 +1,35 @@
-const CACHE_NAME = 'astral-family-v1';
+const CACHE_NAME = 'astral-family-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
-  '/favicon.ico',
+  '/logo.png',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  
+
+  const url = new URL(event.request.url);
+  // Never cache API calls or realtime socket traffic
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -47,7 +45,6 @@ self.addEventListener('fetch', (event) => {
         });
         return response;
       }).catch(() => {
-        // Offline fallback if requested resource is HTML
         if (event.request.headers.get('accept')?.includes('text/html')) {
           return caches.match('/');
         }

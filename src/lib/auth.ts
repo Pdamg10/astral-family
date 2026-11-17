@@ -1,3 +1,4 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 
@@ -42,4 +43,32 @@ export function getTokenFromHeaders(headers: Headers): string | null {
     return auth.slice(7);
   }
   return null;
+}
+
+type AuthResult =
+  | { payload: JWTPayload; response?: undefined }
+  | { payload?: undefined; response: NextResponse };
+
+export async function requireAuth(request: NextRequest): Promise<AuthResult> {
+  const token = getTokenFromHeaders(request.headers);
+  if (!token) {
+    return { response: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) };
+  }
+  const payload = await verifyToken(token);
+  if (!payload) {
+    return { response: NextResponse.json({ error: 'Sesión inválida' }, { status: 401 }) };
+  }
+  return { payload };
+}
+
+export async function requireAdmin(
+  request: NextRequest,
+  forbiddenMessage: string = 'Solo el administrador tiene permisos para esta acción'
+): Promise<AuthResult> {
+  const auth = await requireAuth(request);
+  if (auth.response) return auth;
+  if (auth.payload.role !== 'admin') {
+    return { response: NextResponse.json({ error: forbiddenMessage }, { status: 403 }) };
+  }
+  return auth;
 }

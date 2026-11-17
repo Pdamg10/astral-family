@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
+
+const INVITATION_INCLUDE = {
+  creator: { select: { id: true, name: true, email: true } },
+  usages: {
+    include: {
+      user: { select: { id: true, name: true, email: true, avatar: true } },
+    },
+    orderBy: { usedAt: 'desc' as const },
+  },
+};
+
+const EXPIRATION_HOURS: Record<string, number> = {
+  '1h': 1,
+  '6h': 6,
+  '24h': 24,
+  '1d': 24,
+  '3d': 72,
+  '7d': 168,
+  '30d': 720,
+};
 
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -14,17 +34,8 @@ function generateCode(): string {
 // GET /api/invitations - List all invitations with usage audit log (Admin Only)
 export async function GET(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
-
-    if (payload.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Solo el administrador tiene acceso a la gestión de invitaciones' },
-        { status: 403 }
-      );
-    }
+    const auth = await requireAdmin(request, 'Solo el administrador tiene acceso a la gestión de invitaciones');
+    if (auth.response) return auth.response;
 
     const now = new Date();
 
@@ -38,15 +49,7 @@ export async function GET(request: NextRequest) {
     });
 
     const invitations = await db.invitation.findMany({
-      include: {
-        creator: { select: { id: true, name: true, email: true } },
-        usages: {
-          include: {
-            user: { select: { id: true, name: true, email: true, avatar: true } },
-          },
-          orderBy: { usedAt: 'desc' },
-        },
-      },
+      include: INVITATION_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -60,43 +63,23 @@ export async function GET(request: NextRequest) {
 // POST /api/invitations - Create a new invitation with expiration (Admin Only)
 export async function POST(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
-
-    if (payload.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Solo el administrador puede generar códigos de invitación' },
-        { status: 403 }
-      );
-    }
+    const auth = await requireAdmin(request, 'Solo el administrador puede generar códigos de invitación');
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { maxUses = 1, expirationPreset = '24h', customExpiresAt } = body;
 
-    const now = new Date();
+    const now = Date.now();
     let calculatedExpiresAt: Date | null = null;
 
-    if (expirationPreset === '1h') {
-      calculatedExpiresAt = new Date(now.getTime() + 1 * 60 * 60 * 1000);
-    } else if (expirationPreset === '6h') {
-      calculatedExpiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
-    } else if (expirationPreset === '24h' || expirationPreset === '1d') {
-      calculatedExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    } else if (expirationPreset === '3d') {
-      calculatedExpiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-    } else if (expirationPreset === '7d') {
-      calculatedExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    } else if (expirationPreset === '30d') {
-      calculatedExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    if (expirationPreset === 'never') {
+      calculatedExpiresAt = null;
     } else if (expirationPreset === 'custom' && customExpiresAt) {
       calculatedExpiresAt = new Date(customExpiresAt);
-    } else if (expirationPreset === 'never') {
-      calculatedExpiresAt = null;
     } else {
-      // Default 24 hours
-      calculatedExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const hours = EXPIRATION_HOURS[expirationPreset] ?? 24;
+      calculatedExpiresAt = new Date(now + hours * 60 * 60 * 1000);
     }
 
     let code = generateCode();
@@ -112,14 +95,7 @@ export async function POST(request: NextRequest) {
         expiresAt: calculatedExpiresAt,
         isActive: true,
       },
-      include: {
-        creator: { select: { id: true, name: true, email: true } },
-        usages: {
-          include: {
-            user: { select: { id: true, name: true, email: true, avatar: true } },
-          },
-        },
-      },
+      include: INVITATION_INCLUDE,
     });
 
     return NextResponse.json({ invitation }, { status: 201 });
@@ -135,14 +111,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/invitations - Revoke/Toggle an invitation code (Admin Only)
 export async function PATCH(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
-
-    if (payload.role !== 'admin') {
-      return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });
-    }
+    const auth = await requireAdmin(request, 'Sin permisos');
+    if (auth.response) return auth.response;
 
     const { id, isActive } = await request.json();
     if (!id) return NextResponse.json({ error: 'ID de invitación requerido' }, { status: 400 });
@@ -150,14 +120,7 @@ export async function PATCH(request: NextRequest) {
     const updated = await db.invitation.update({
       where: { id },
       data: { isActive: !!isActive },
-      include: {
-        creator: { select: { id: true, name: true, email: true } },
-        usages: {
-          include: {
-            user: { select: { id: true, name: true, email: true, avatar: true } },
-          },
-        },
-      },
+      include: INVITATION_INCLUDE,
     });
 
     return NextResponse.json({ invitation: updated });
@@ -170,14 +133,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/invitations - Remove invitation (Admin Only)
 export async function DELETE(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
-
-    if (payload.role !== 'admin') {
-      return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });
-    }
+    const auth = await requireAdmin(request, 'Sin permisos');
+    if (auth.response) return auth.response;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

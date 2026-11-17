@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const token = getTokenFromHeaders(request.headers);
-    if (!token) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    }
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Sesión inválida' }, { status: 401 });
-    }
+    const auth = await requireAuth(request);
+    if (auth.response) return auth.response;
+    const { payload } = auth;
 
     const user = await db.user.findUnique({
       where: { id: payload.userId },

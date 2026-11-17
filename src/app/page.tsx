@@ -17,112 +17,55 @@ import TransitsInfoModal from '@/components/features/charts/TransitsInfoModal';
 import LinkFamilyModal from '@/components/features/modals/LinkFamilyModal';
 import ZodiacSignCounterBar from '@/components/features/dashboard/ZodiacSignCounterBar';
 import DecanateCard from '@/components/features/charts/DecanateCard';
-import { getPlanetSymbol, getAspectSymbol, getSignEmoji, formatDegreeMinute } from '@/services/astrology/utils';
+import {
+  getPlanetSymbol,
+  getAspectSymbol,
+  getSignEmoji,
+  formatDegreeMinute,
+  getSignNameEs,
+  getPlanetNameEs,
+  signToAbsoluteDegree,
+  canonicalSignName,
+  getSignElement,
+  formatBirthDate,
+  calculateAge,
+} from '@/services/astrology/utils';
 import { calculateCurrentTransits } from '@/services/astrology/synastry';
 import { exportSvgToFile, exportPngFromFile, printChartReport } from '@/lib/chartExport';
 import type { BirthProfile } from '@/types/prisma-types';
-import type { TransitResult } from '@/types/astrology';
+import type { Element, TransitResult } from '@/types/astrology';
 import { io, Socket } from 'socket.io-client';
 
-function formatDate(ds?: string): string {
-  if (!ds) return '';
-  try {
-    const parts = ds.includes('-') ? ds.split('-') : ds.split('/');
-    if (parts.length < 3) return ds;
-    const [y, m, d] = parts;
-    const ms = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    const monthIdx = parseInt(m, 10) - 1;
-    const dayNum = parseInt(d, 10);
-    if (isNaN(dayNum) || isNaN(monthIdx) || !ms[monthIdx]) return ds;
-    return `${dayNum} de ${ms[monthIdx]} de ${y}`;
-  } catch {
-    return ds || '';
+function hexToRgba(hex: string, opacity: number): string {
+  let clean = (hex || '').replace('#', '').trim();
+  if (clean.length === 3) {
+    clean = clean.split('').map(c => c + c).join('');
   }
+  if (clean.length !== 6) return `rgba(15, 10, 26, ${opacity})`;
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-function signToAbs(sign: string, deg: number, min: number = 0): number {
-  const map: Record<string, number> = {
-    Aries: 0,
-    Taurus: 30, Tauro: 30,
-    Gemini: 60, Géminis: 60,
-    Cancer: 90, Cáncer: 90,
-    Leo: 120,
-    Virgo: 150,
-    Libra: 180,
-    Scorpio: 210, Escorpio: 210,
-    Sagittarius: 240, Sagitario: 240,
-    Capricorn: 270, Capricornio: 270,
-    Aquarius: 300, Acuario: 300,
-    Pisces: 330, Piscis: 330,
-  };
-  return (map[sign] || 0) + deg + (min / 60);
-}
-
-const SIGN_NAMES_ES: Record<string, string> = {
-  Aries: 'Aries',
-  Taurus: 'Tauro', Tauro: 'Tauro',
-  Gemini: 'Géminis', Géminis: 'Géminis',
-  Cancer: 'Cáncer', Cáncer: 'Cáncer',
-  Leo: 'Leo',
-  Virgo: 'Virgo',
-  Libra: 'Libra',
-  Scorpio: 'Escorpio', Escorpio: 'Escorpio',
-  Sagittarius: 'Sagitario', Sagitario: 'Sagitario',
-  Capricorn: 'Capricornio', Capricornio: 'Capricornio',
-  Aquarius: 'Acuario', Acuario: 'Acuario',
-  Pisces: 'Piscis', Piscis: 'Piscis',
-};
-
-const PLANET_NAMES_ES: Record<string, string> = {
-  Sun: 'Sol',
-  Moon: 'Luna',
-  Mercury: 'Mercurio',
-  Venus: 'Venus',
-  Mars: 'Marte',
-  Jupiter: 'Júpiter',
-  Saturn: 'Saturno',
-  Uranus: 'Urano',
-  Neptune: 'Neptuno',
-  Pluto: 'Plutón',
-  Ascendant: 'Ascendente (AC)',
-  MC: 'Medio Cielo (MC)',
-  DESC: 'Descendente (DC)',
-  IC: 'Fondo Cielo (IC)',
-  NorthNode: 'Nodo Norte',
-  SouthNode: 'Nodo Sur',
-  Chiron: 'Quirón',
-  Lilith: 'Lilith (Luna Negra)',
-  PartOfFortune: 'Parte de Fortuna',
-};
-
-function getSignNameEs(sign: string): string {
-  return SIGN_NAMES_ES[sign] || sign;
-}
-
-function getPlanetNameEs(body: string): string {
-  return PLANET_NAMES_ES[body] || body;
-}
-
-function ptLabel(p: string): string {
-  return PLANET_NAMES_ES[p] || p;
-}
-
-function calculateAge(birthDateStr?: string): number {
-  if (!birthDateStr) return 0;
-  try {
-    const birth = new Date(birthDateStr);
-    if (isNaN(birth.getTime())) return 0;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age > 0 ? age : 0;
-  } catch {
-    return 0;
-  }
-}
+const KINSHIP_GROUPS: {
+  key: keyof Pick<
+    BirthProfile,
+    'siblings' | 'inLaws' | 'unclesAunts' | 'niecesNephews' | 'cousins' | 'grandparents' | 'grandchildren' | 'children'
+  >;
+  label: string;
+  labelClass: string;
+  pillClass: string;
+}[] = [
+  { key: 'siblings', label: '👥 Hermanos', labelClass: 'text-sky-300/80', pillClass: 'bg-sky-500/15 text-sky-200 border-sky-500/30 hover:bg-sky-500/30' },
+  { key: 'inLaws', label: '🤝 Cuñados', labelClass: 'text-teal-300/80', pillClass: 'bg-teal-500/15 text-teal-200 border-teal-500/30 hover:bg-teal-500/30' },
+  { key: 'unclesAunts', label: '🧓 Tíos', labelClass: 'text-emerald-300/80', pillClass: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30 hover:bg-emerald-500/30' },
+  { key: 'niecesNephews', label: '🧸 Sobrinos', labelClass: 'text-indigo-300/80', pillClass: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/30 hover:bg-indigo-500/30' },
+  { key: 'cousins', label: '🫂 Primos', labelClass: 'text-cyan-300/80', pillClass: 'bg-cyan-500/15 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/30' },
+  { key: 'grandparents', label: '👴 Abuelos', labelClass: 'text-yellow-300/80', pillClass: 'bg-yellow-500/15 text-yellow-200 border-yellow-500/30 hover:bg-yellow-500/30' },
+  { key: 'grandchildren', label: '🧒 Nietos', labelClass: 'text-rose-300/80', pillClass: 'bg-rose-500/15 text-rose-200 border-rose-500/30 hover:bg-rose-500/30' },
+  { key: 'children', label: '👶 Hijos', labelClass: 'text-amber-300/80', pillClass: 'bg-amber-500/15 text-amber-200 border-amber-500/30 hover:bg-amber-500/30' },
+];
 
 export default function AstralFamilyHome() {
   const { user, token, theme, isAuthenticated, isLoading, login, register, logout, setTheme, initialize } = useAuthStore();
@@ -147,16 +90,20 @@ export default function AstralFamilyHome() {
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkModalProfileAId, setLinkModalProfileAId] = useState<string | null>(null);
   const [selectedZodiacSign, setSelectedZodiacSign] = useState<string | null>(null);
+  const [selectedElement, setSelectedElement] = useState<Element | null>(null);
   const [addProfileParentId, setAddProfileParentId] = useState<string | null>(null);
   const [addProfilePartnerId, setAddProfilePartnerId] = useState<string | null>(null);
   const [addProfileSiblingId, setAddProfileSiblingId] = useState<string | null>(null);
-  useEffect(() => { initialize(); }, []);
 
-  const notify = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  const notify = useCallback((msg: string, type: 'info' | 'success' | 'error' = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setNotifs(p => [...p, { id, msg, type }]);
-    setTimeout(() => setNotifs(p => p.filter(n => n.id !== id)), 4000);
-  };
+    setNotifs(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setNotifs(prev => prev.filter(n => n.id !== id)), 4000);
+  }, []);
 
   const isOwnProfile = useCallback((p?: BirthProfile | null) => {
     if (!p || !user) return false;
@@ -165,6 +112,14 @@ export default function AstralFamilyHome() {
     return false;
   }, [user]);
 
+  const applyFetchedProfiles = useCallback((list: BirthProfile[]) => {
+    setProfiles(list);
+    setSelProfile(prev => {
+      if (!prev) return list[0] || null;
+      return list.find(p => p.id === prev.id) || list[0] || null;
+    });
+  }, []);
+
   const fetchProfiles = useCallback(async () => {
     const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('astral_token') : null);
     if (!activeToken) return;
@@ -172,37 +127,26 @@ export default function AstralFamilyHome() {
       const r = await fetch('/api/profiles', { headers: { Authorization: `Bearer ${activeToken}` } });
       const d = await r.json();
       if (r.ok && d.profiles) {
-        setProfiles(d.profiles);
-        setSelProfile(prev => {
-          if (!prev) return d.profiles[0] || null;
-          const matched = d.profiles.find((p: any) => p.id === prev.id);
-          return matched || d.profiles[0] || null;
-        });
+        applyFetchedProfiles(d.profiles);
       }
     } catch {
       notify('Error al cargar perfiles', 'error');
     }
-  }, [token]);
+  }, [token, applyFetchedProfiles, notify]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('astral_token') : null);
     if (!activeToken) return;
-    let isMounted = true;
+    let cancelled = false;
     fetch('/api/profiles', { headers: { Authorization: `Bearer ${activeToken}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (isMounted && d.profiles) {
-          setProfiles(d.profiles);
-          setSelProfile(prev => {
-            if (!prev) return d.profiles[0] || null;
-            const matched = d.profiles.find((p: any) => p.id === prev.id);
-            return matched || d.profiles[0] || null;
-          });
-        }
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!cancelled && ok && d.profiles) applyFetchedProfiles(d.profiles);
       })
       .catch(() => {});
-    return () => { isMounted = false; };
-  }, [isAuthenticated, token]);
+    return () => { cancelled = true; };
+  }, [isAuthenticated, token, applyFetchedProfiles]);
 
   const fetchInvitations = useCallback(async () => {
     if (!token || user?.role !== 'admin') return;
@@ -211,22 +155,21 @@ export default function AstralFamilyHome() {
       const d = await r.json();
       if (r.ok && d.invitations) setInvs(d.invitations);
     } catch {}
-  }, [token, user]);
+  }, [token, user?.role]);
 
   useEffect(() => {
     if (!isAuthenticated || !token || user?.role !== 'admin') return;
-    let isMounted = true;
+    let cancelled = false;
     fetch('/api/invitations', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (isMounted && d.invitations) setInvs(d.invitations);
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!cancelled && ok && d.invitations) setInvs(d.invitations);
       })
       .catch(() => {});
-    return () => { isMounted = false; };
-  }, [isAuthenticated, token, user]);
+    return () => { cancelled = true; };
+  }, [isAuthenticated, token, user?.role]);
 
   const saveThemeSettings = async (t: any) => {
-    // Optimistically update theme in store and localStorage immediately
     setTheme(t);
     if (!token) return;
     try {
@@ -253,8 +196,8 @@ export default function AstralFamilyHome() {
       forceNew: true,
       auth: { token },
     });
-    s.on('profile-updated', () => { fetchProfiles(); });
-    s.on('profile-created', () => { fetchProfiles(); });
+    s.on('profile-updated', fetchProfiles);
+    s.on('profile-created', fetchProfiles);
     socketRef.current = s;
     return () => { s.disconnect(); };
   }, [isAuthenticated, token, fetchProfiles]);
@@ -268,7 +211,7 @@ export default function AstralFamilyHome() {
           sign: pp.sign,
           degree: pp.degree,
           minute: pp.minute,
-          absoluteDegree: signToAbs(pp.sign, pp.degree, pp.minute),
+          absoluteDegree: signToAbsoluteDegree(pp.sign, pp.degree, pp.minute),
           retrograde: pp.retrograde,
         }))
       );
@@ -276,13 +219,25 @@ export default function AstralFamilyHome() {
     return null;
   }, [selProfile]);
 
+  const openAddRelative = useCallback((rel: { parentId?: string | null; partnerId?: string | null; siblingId?: string | null }) => {
+    setAddProfileParentId(rel.parentId || null);
+    setAddProfilePartnerId(rel.partnerId || null);
+    setAddProfileSiblingId(rel.siblingId || null);
+    setView('addProfile');
+  }, []);
+
+  const openLinkModalFor = useCallback((profileId?: string | null) => {
+    setLinkModalProfileAId(profileId || null);
+    setShowLinkModal(true);
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await login(loginE, loginP);
     if (ok) {
       setView('dashboard');
     } else {
-      notify('Credenciales inválidas', 'error');
+      notify(useAuthStore.getState().lastError || 'Credenciales inválidas', 'error');
     }
   };
 
@@ -293,13 +248,12 @@ export default function AstralFamilyHome() {
       setRegN(''); setRegE(''); setRegP(''); setRegC('');
       notify('Cuenta creada exitosamente', 'success');
     } else {
-      notify('Error al registrar usuario. Verifica el código de invitación.', 'error');
+      notify(useAuthStore.getState().lastError || 'Error al registrar usuario. Verifica el código de invitación.', 'error');
     }
   };
 
   const handleSaveProfile = async (profileData: any) => {
     if (!token) return false;
-
     try {
       const r = await fetch('/api/profiles', {
         method: 'POST',
@@ -313,10 +267,9 @@ export default function AstralFamilyHome() {
         fetchProfiles();
         setView('dashboard');
         return true;
-      } else {
-        notify(d.error || 'Error al guardar perfil', 'error');
-        return false;
       }
+      notify(d.error || 'Error al guardar perfil', 'error');
+      return false;
     } catch {
       notify('Error de conexión', 'error');
       return false;
@@ -405,56 +358,61 @@ export default function AstralFamilyHome() {
     }
   };
 
-  const hexToRgba = (hex: string, opacity: number): string => {
-    let clean = (hex || '').replace('#', '').trim();
-    if (clean.length === 3) {
-      clean = clean.split('').map(c => c + c).join('');
-    }
-    if (clean.length !== 6) return `rgba(15, 10, 26, ${opacity})`;
-    const r = parseInt(clean.substring(0, 2), 16);
-    const g = parseInt(clean.substring(2, 4), 16);
-    const b = parseInt(clean.substring(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-  };
-
   const p = theme?.primaryColor || '#a855f7';
   const a = theme?.accentColor || '#f59e0b';
   const sColor = theme?.secondaryColor || '#ec4899';
   const bgType = theme?.backgroundType || 'dynamic';
   const bgImage = theme?.backgroundImage || null;
-  const themeGradientColors = (() => {
-    if (!theme?.gradientColors) return ['#0f0a1a', '#1a0a2e', '#0f0a1a'];
+  const rawGradientColors = theme?.gradientColors;
+  const themeGradientColors = useMemo(() => {
+    if (!rawGradientColors) return ['#0f0a1a', '#1a0a2e', '#0f0a1a'];
     try {
-      const c = typeof theme.gradientColors === 'string' ? JSON.parse(theme.gradientColors) : theme.gradientColors;
+      const c = typeof rawGradientColors === 'string' ? JSON.parse(rawGradientColors) : rawGradientColors;
       return Array.isArray(c) && c.length >= 2 ? c : ['#0f0a1a', '#1a0a2e', '#0f0a1a'];
     } catch {
       return ['#0f0a1a', '#1a0a2e', '#0f0a1a'];
     }
-  })();
-  const grad = `linear-gradient(135deg, ${themeGradientColors.join(',')})`;
+  }, [rawGradientColors]);
 
   const baseCardTone = theme?.backgroundColor || themeGradientColors[0] || '#0f0a1a';
   const cBg = hexToRgba(baseCardTone, theme?.cardOpacity || 0.85);
-  const cardBorder = `${p}40`;
   const rad = `${theme?.borderRadius || 12}px`;
   const inp = 'w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-lg text-white placeholder-white/30 text-xs focus:outline-none transition-all';
   const btn = 'w-full py-2.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90 cursor-pointer shadow-md';
 
-  const effectiveView = !isAuthenticated
-    ? (view === 'register' ? 'register' : 'login')
-    : (view === 'login' || view === 'register' ? 'dashboard' : view);
+  const effectiveView: ViewType = (() => {
+    if (!isAuthenticated) {
+      return view === 'register' ? 'register' : 'login';
+    }
+    if (view === 'login' || view === 'register') return 'dashboard';
+    if ((view === 'invitations' || view === 'usersAdmin') && user?.role !== 'admin') return 'dashboard';
+    if (view === 'chart' && !selProfile) return 'dashboard';
+    return view;
+  })();
 
-  if (isLoading) {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
+  const filteredProfiles = useMemo(() => {
+    const sorted = [...profiles].sort((x, y) => {
+      const dateA = x.birthDate ? new Date(x.birthDate).getTime() : 0;
+      const dateB = y.birthDate ? new Date(y.birthDate).getTime() : 0;
+      return dateA - dateB;
+    });
+    const q = searchQ.toLowerCase();
+    const targetSign = selectedZodiacSign ? canonicalSignName(selectedZodiacSign) : null;
+    return sorted.filter(pr => {
+      if (!pr.name.toLowerCase().includes(q)) return false;
+      if (!targetSign && !selectedElement) return true;
+      const sun = pr.planetaryPositions?.find(pp => pp.body === 'Sun');
+      if (!sun?.sign) return false;
+      const canonical = canonicalSignName(sun.sign);
+      if (targetSign && canonical !== targetSign) return false;
+      if (selectedElement && getSignElement(canonical) !== selectedElement) return false;
+      return true;
+    });
+  }, [profiles, searchQ, selectedZodiacSign, selectedElement]);
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <img
@@ -465,22 +423,12 @@ export default function AstralFamilyHome() {
             <p className="text-white/70 text-sm font-medium">Cargando biblioteca astral...</p>
           </div>
         </div>
-      </DynamicCosmicBackground>
-    );
-  }
+      );
+    }
 
-  // LOGIN VIEW
-  if (effectiveView === 'login') {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
+    if (effectiveView === 'login' || effectiveView === 'register') {
+      const isRegister = effectiveView === 'register';
+      return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="w-full max-w-sm backdrop-blur-xl border border-white/10 p-8 shadow-2xl" style={{ background: cBg, borderRadius: rad }}>
             <div className="text-center mb-6">
@@ -492,168 +440,72 @@ export default function AstralFamilyHome() {
                   className="relative w-20 h-20 rounded-full mx-auto shadow-2xl border-2 border-white/30 group-hover:scale-105 transition-transform duration-300 object-contain bg-black/40"
                 />
               </div>
-              <h1 className="text-2xl font-light text-white tracking-wider">Astral Family</h1>
-              <p className="text-xs text-white/50 mt-1">Biblioteca astral familiar privada</p>
+              <h1 className="text-2xl font-light text-white tracking-wider">
+                {isRegister ? 'Crear cuenta' : 'Astral Family'}
+              </h1>
+              <p className="text-xs text-white/50 mt-1">
+                {isRegister ? 'Requiere invitación emitida por el Administrador' : 'Biblioteca astral familiar privada'}
+              </p>
             </div>
-            <form onSubmit={handleLogin} className="space-y-3">
-              <input
-                type="email"
-                placeholder="Correo electrónico"
-                value={loginE}
-                onChange={e => setLoginE(e.target.value)}
-                required
-                className={inp}
-              />
-              <input
-                type="password"
-                placeholder="Contraseña"
-                value={loginP}
-                onChange={e => setLoginP(e.target.value)}
-                required
-                className={inp}
-              />
-              <button
-                type="submit"
-                className={`${btn} text-white font-semibold shadow-lg hover:opacity-90 transition-opacity cursor-pointer`}
-                style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
-              >
-                Iniciar sesión
-              </button>
-            </form>
-            <button
-              onClick={() => setView('register')}
-              className="mt-4 text-white/40 hover:text-white/80 text-xs block mx-auto cursor-pointer transition-colors"
-            >
-              Registrarse con código de invitación →
-            </button>
-          </div>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
 
-  // REGISTER VIEW
-  if (effectiveView === 'register') {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-sm backdrop-blur-xl border border-white/10 p-8 shadow-2xl" style={{ background: cBg, borderRadius: rad }}>
-            <div className="text-center mb-6">
-              <div className="relative inline-block mb-3 group">
-                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 opacity-60 blur-sm group-hover:opacity-100 transition-opacity" />
-                <img
-                  src="/logo.png"
-                  alt="Astral Family"
-                  className="relative w-20 h-20 rounded-full mx-auto shadow-2xl border-2 border-white/30 group-hover:scale-105 transition-transform duration-300 object-contain bg-black/40"
+            {isRegister ? (
+              <form onSubmit={handleRegister} className="space-y-3">
+                <input placeholder="Nombre completo" value={regN} onChange={e => setRegN(e.target.value)} required className={inp} />
+                <input type="email" placeholder="Correo electrónico" value={regE} onChange={e => setRegE(e.target.value)} required className={inp} />
+                <input type="password" placeholder="Contraseña" value={regP} onChange={e => setRegP(e.target.value)} required className={inp} />
+                <input
+                  placeholder="Código de invitación (ej. ASTRAL-FAMILY-DEMO)"
+                  value={regC}
+                  onChange={e => setRegC(e.target.value.toUpperCase())}
+                  required
+                  className={inp}
                 />
-              </div>
-              <h1 className="text-2xl font-light text-white tracking-wider">Crear cuenta</h1>
-              <p className="text-xs text-white/50 mt-1">Requiere invitación emitida por el Administrador</p>
-            </div>
-            <form onSubmit={handleRegister} className="space-y-3">
-              <input
-                placeholder="Nombre completo"
-                value={regN}
-                onChange={e => setRegN(e.target.value)}
-                required
-                className={inp}
-              />
-              <input
-                type="email"
-                placeholder="Correo electrónico"
-                value={regE}
-                onChange={e => setRegE(e.target.value)}
-                required
-                className={inp}
-              />
-              <input
-                type="password"
-                placeholder="Contraseña"
-                value={regP}
-                onChange={e => setRegP(e.target.value)}
-                required
-                className={inp}
-              />
-              <input
-                placeholder="Código de invitación (ej. ASTRAL-FAMILY-DEMO)"
-                value={regC}
-                onChange={e => setRegC(e.target.value.toUpperCase())}
-                required
-                className={inp}
-              />
-              <button
-                type="submit"
-                className={`${btn} text-white font-semibold shadow-lg hover:opacity-90 transition-opacity cursor-pointer`}
-                style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
-              >
-                Crear cuenta
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  className={`${btn} text-white font-semibold shadow-lg`}
+                  style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
+                >
+                  Crear cuenta
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-3">
+                <input type="email" placeholder="Correo electrónico" value={loginE} onChange={e => setLoginE(e.target.value)} required className={inp} />
+                <input type="password" placeholder="Contraseña" value={loginP} onChange={e => setLoginP(e.target.value)} required className={inp} />
+                <button
+                  type="submit"
+                  className={`${btn} text-white font-semibold shadow-lg`}
+                  style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
+                >
+                  Iniciar sesión
+                </button>
+              </form>
+            )}
+
             <button
-              onClick={() => setView('login')}
+              onClick={() => setView(isRegister ? 'login' : 'register')}
               className="mt-4 text-white/40 hover:text-white/80 text-xs block mx-auto cursor-pointer transition-colors"
             >
-              ← Volver al inicio de sesión
+              {isRegister ? '← Volver al inicio de sesión' : 'Registrarse con código de invitación →'}
             </button>
           </div>
         </div>
-      </DynamicCosmicBackground>
-    );
-  }
+      );
+    }
 
-  // CHART VIEW (Full Width Responsive Modern Layout)
-  if (view === 'chart' && selProfile) {
-    const sun = selProfile.planetaryPositions?.find((pp: any) => pp.body === 'Sun');
-    const moon = selProfile.planetaryPositions?.find((pp: any) => pp.body === 'Moon');
-    const asc = selProfile.chartPoints?.find((cp: any) => cp.point === 'Ascendant') || selProfile.houses?.find((h: any) => h.houseNumber === 1);
+    if (effectiveView === 'chart' && selProfile) {
+      const sun = selProfile.planetaryPositions?.find((pp: any) => pp.body === 'Sun');
+      const moon = selProfile.planetaryPositions?.find((pp: any) => pp.body === 'Moon');
+      const asc = selProfile.chartPoints?.find((cp: any) => cp.point === 'Ascendant') || selProfile.houses?.find((h: any) => h.houseNumber === 1);
+      const profileAge = calculateAge(selProfile.birthDate);
+      const hasAnyKinship = Boolean(
+        selProfile.partner ||
+        selProfile.parent ||
+        selProfile.parent2 ||
+        KINSHIP_GROUPS.some(g => (selProfile[g.key]?.length || 0) > 0)
+      );
 
-    const calcEl = () => {
-      const c = { Fire: 0, Earth: 0, Air: 0, Water: 0 };
-      selProfile.planetaryPositions?.forEach((pp: any) => {
-        const fs = ['Aries', 'Leo', 'Sagittarius'];
-        const es = ['Taurus', 'Virgo', 'Capricorn'];
-        const as = ['Gemini', 'Libra', 'Aquarius'];
-        if (fs.includes(pp.sign)) c.Fire++;
-        else if (es.includes(pp.sign)) c.Earth++;
-        else if (as.includes(pp.sign)) c.Air++;
-        else c.Water++;
-      });
-      const e = Object.entries(c) as [string, number][];
-      e.sort((a, b) => b[1] - a[1]);
-      return { ...c, dominant: e[0][0], least: e[3][0] };
-    };
-
-    const calcMod = () => {
-      const c = { Cardinal: 0, Fixed: 0, Mutable: 0 };
-      selProfile.planetaryPositions?.forEach((pp: any) => {
-        const cs = ['Aries', 'Cancer', 'Libra', 'Capricorn'];
-        if (cs.includes(pp.sign)) c.Cardinal++;
-        else if (['Taurus', 'Leo', 'Scorpio', 'Aquarius'].includes(pp.sign)) c.Fixed++;
-        else c.Mutable++;
-      });
-      const e = Object.entries(c) as [string, number][];
-      e.sort((a, b) => b[1] - a[1]);
-      return { ...c, dominant: e[0][0], least: e[2][0] };
-    };
-
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
+      return (
         <div className="min-h-screen flex flex-col">
           <header
             className="sticky top-0 z-50 backdrop-blur-xl border-b border-white/10 print:hidden transition-colors"
@@ -731,6 +583,7 @@ export default function AstralFamilyHome() {
           <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
             {chartMode === 'detailed' ? (
               <DetailedReportView
+                key={selProfile.id}
                 profile={selProfile}
                 primaryColor={p}
                 secondaryColor={sColor}
@@ -750,15 +603,15 @@ export default function AstralFamilyHome() {
                   />
                   <h1 className="text-3xl sm:text-4xl font-light text-white tracking-wider mb-2 flex items-center justify-center gap-3 flex-wrap">
                     <span>✦ {selProfile.name}</span>
-                    {calculateAge(selProfile.birthDate) > 0 && (
+                    {profileAge > 0 && (
                       <span className="text-sm font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        {calculateAge(selProfile.birthDate)} años
+                        {profileAge} años
                       </span>
                     )}
                   </h1>
                   <p className="text-white/70 text-xs sm:text-sm">
-                    🎂 {formatDate(selProfile.birthDate)}
-                    {calculateAge(selProfile.birthDate) > 0 ? ` (${calculateAge(selProfile.birthDate)} años)` : ''}
+                    🎂 {formatBirthDate(selProfile.birthDate)}
+                    {profileAge > 0 ? ` (${profileAge} años)` : ''}
                     {selProfile.birthTime ? ` · ⏰ ${selProfile.birthTime}` : ''}
                     {selProfile.timeUnknown ? ' (hora desconocida)' : ''} · 📍 {selProfile.city}, {selProfile.country}
                   </p>
@@ -777,14 +630,14 @@ export default function AstralFamilyHome() {
                   )}
 
                   {/* Lineage & Family Connections */}
-                  {(selProfile.partner || selProfile.parent || selProfile.parent2 || (selProfile.siblings && selProfile.siblings.length > 0) || (selProfile.children && selProfile.children.length > 0)) && (
+                  {hasAnyKinship && (
                     <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-center gap-3 text-xs">
                       {selProfile.partner && (
                         <div className="flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 px-3 py-1 rounded-full text-pink-200">
                           <span className="text-pink-400">💍 Pareja:</span>
                           <button
                             onClick={() => {
-                              const partnerProf = profiles.find(p => p.id === selProfile.partnerId || (selProfile.partner && p.id === selProfile.partner.id));
+                              const partnerProf = profiles.find(pr => pr.id === selProfile.partnerId || pr.id === selProfile.partner?.id);
                               if (partnerProf) setSelProfile(partnerProf);
                             }}
                             className="font-semibold underline hover:text-white transition-colors cursor-pointer"
@@ -797,174 +650,42 @@ export default function AstralFamilyHome() {
                       {(selProfile.parent || selProfile.parent2) && (
                         <div className="flex items-center gap-1.5 bg-purple-500/15 border border-purple-500/30 px-3 py-1 rounded-full text-purple-200">
                           <span className="text-purple-400">👨‍👩‍👧 Padres:</span>
-                          {selProfile.parent && (
+                          {[selProfile.parent, selProfile.parent2].filter(Boolean).map(par => (
                             <button
+                              key={par!.id}
                               onClick={() => {
-                                const parentProf = profiles.find(p => p.id === selProfile.parentId);
+                                const parentProf = profiles.find(pr => pr.id === par!.id);
                                 if (parentProf) setSelProfile(parentProf);
                               }}
                               className="font-semibold underline hover:text-white transition-colors cursor-pointer mr-1"
                             >
-                              {selProfile.parent.name} →
-                            </button>
-                          )}
-                          {selProfile.parent2 && (
-                            <button
-                              onClick={() => {
-                                const parent2Prof = profiles.find(p => p.id === selProfile.parent2Id);
-                                if (parent2Prof) setSelProfile(parent2Prof);
-                              }}
-                              className="font-semibold underline hover:text-white transition-colors cursor-pointer"
-                            >
-                              {selProfile.parent2.name} →
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {selProfile.siblings && selProfile.siblings.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sky-300/80">👥 Hermanos ({selProfile.siblings.length}):</span>
-                          {selProfile.siblings.map(sib => (
-                            <button
-                              key={sib.id}
-                              onClick={() => {
-                                const sibProf = profiles.find(p => p.id === sib.id);
-                                if (sibProf) setSelProfile(sibProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-200 border border-sky-500/30 hover:bg-sky-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {sib.name} →
+                              {par!.name} →
                             </button>
                           ))}
                         </div>
                       )}
 
-                      {selProfile.inLaws && selProfile.inLaws.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-teal-300/80">🤝 Cuñados ({selProfile.inLaws.length}):</span>
-                          {selProfile.inLaws.map(inLaw => (
-                            <button
-                              key={inLaw.id}
-                              onClick={() => {
-                                const inLawProf = profiles.find(p => p.id === inLaw.id);
-                                if (inLawProf) setSelProfile(inLawProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-teal-500/15 text-teal-200 border border-teal-500/30 hover:bg-teal-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {inLaw.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.unclesAunts && selProfile.unclesAunts.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-emerald-300/80">🧓 Tíos ({selProfile.unclesAunts.length}):</span>
-                          {selProfile.unclesAunts.map(uncle => (
-                            <button
-                              key={uncle.id}
-                              onClick={() => {
-                                const uncleProf = profiles.find(p => p.id === uncle.id);
-                                if (uncleProf) setSelProfile(uncleProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {uncle.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.niecesNephews && selProfile.niecesNephews.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-indigo-300/80">🧸 Sobrinos ({selProfile.niecesNephews.length}):</span>
-                          {selProfile.niecesNephews.map(niece => (
-                            <button
-                              key={niece.id}
-                              onClick={() => {
-                                const nieceProf = profiles.find(p => p.id === niece.id);
-                                if (nieceProf) setSelProfile(nieceProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-500/30 hover:bg-indigo-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {niece.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.cousins && selProfile.cousins.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-cyan-300/80">🫂 Primos ({selProfile.cousins.length}):</span>
-                          {selProfile.cousins.map(cousin => (
-                            <button
-                              key={cousin.id}
-                              onClick={() => {
-                                const cousinProf = profiles.find(p => p.id === cousin.id);
-                                if (cousinProf) setSelProfile(cousinProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-200 border border-cyan-500/30 hover:bg-cyan-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {cousin.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.grandparents && selProfile.grandparents.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-yellow-300/80">👴 Abuelos ({selProfile.grandparents.length}):</span>
-                          {selProfile.grandparents.map(gp => (
-                            <button
-                              key={gp.id}
-                              onClick={() => {
-                                const gpProf = profiles.find(p => p.id === gp.id);
-                                if (gpProf) setSelProfile(gpProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-200 border border-yellow-500/30 hover:bg-yellow-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {gp.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.grandchildren && selProfile.grandchildren.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-rose-300/80">🧒 Nietos ({selProfile.grandchildren.length}):</span>
-                          {selProfile.grandchildren.map(gch => (
-                            <button
-                              key={gch.id}
-                              onClick={() => {
-                                const gchProf = profiles.find(p => p.id === gch.id);
-                                if (gchProf) setSelProfile(gchProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-200 border border-rose-500/30 hover:bg-rose-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {gch.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selProfile.children && selProfile.children.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-amber-300/80">👶 Hijos ({selProfile.children.length}):</span>
-                          {selProfile.children.map(child => (
-                            <button
-                              key={child.id}
-                              onClick={() => {
-                                const childProf = profiles.find(p => p.id === child.id);
-                                if (childProf) setSelProfile(childProf);
-                              }}
-                              className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/30 transition-all text-[11px] font-medium cursor-pointer"
-                            >
-                              ✦ {child.name} →
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {KINSHIP_GROUPS.map(({ key, label, labelClass, pillClass }) => {
+                        const members = selProfile[key];
+                        if (!members || members.length === 0) return null;
+                        return (
+                          <div key={key} className="flex items-center gap-1.5 flex-wrap">
+                            <span className={labelClass}>{label} ({members.length}):</span>
+                            {members.map(rel => (
+                              <button
+                                key={rel.id}
+                                onClick={() => {
+                                  const relProf = profiles.find(pr => pr.id === rel.id);
+                                  if (relProf) setSelProfile(relProf);
+                                }}
+                                className={`px-2.5 py-0.5 rounded-full border transition-all text-[11px] font-medium cursor-pointer ${pillClass}`}
+                              >
+                                ✦ {rel.name} →
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -983,9 +704,7 @@ export default function AstralFamilyHome() {
                       }
                     >
                       <span>⚡ {showTransits ? 'Ocultar Tránsitos en Vivo' : 'Superponer Tránsitos Planetarios Actuales'}</span>
-                      {showTransits && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      )}
+                      {showTransits && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
                     </button>
 
                     <button
@@ -1001,15 +720,12 @@ export default function AstralFamilyHome() {
                     {(user?.role === 'admin' || isOwnProfile(selProfile)) && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setLinkModalProfileAId(selProfile.id);
-                          setShowLinkModal(true);
-                        }}
+                        onClick={() => openLinkModalFor(selProfile.id)}
                         className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-[1.02]"
-                        title={`Vincular parentesco (pareja, hermano, padre, hijo) para ${selProfile.name}`}
+                        title={`Agregar, editar o quitar vínculos familiares de ${selProfile.name}`}
                       >
                         <span>🔗</span>
-                        <span>+ Vincular Familiar</span>
+                        <span>Gestionar Vínculos</span>
                       </button>
                     )}
                   </div>
@@ -1036,7 +752,7 @@ export default function AstralFamilyHome() {
                           sign: pp.sign,
                           degree: pp.degree,
                           minute: pp.minute,
-                          absoluteDegree: signToAbs(pp.sign, pp.degree, pp.minute),
+                          absoluteDegree: signToAbsoluteDegree(pp.sign, pp.degree, pp.minute),
                           retrograde: pp.retrograde,
                           house: pp.house,
                         }))}
@@ -1045,7 +761,7 @@ export default function AstralFamilyHome() {
                           sign: h.sign,
                           degree: h.degree,
                           minute: h.minute,
-                          absoluteDegree: signToAbs(h.sign, h.degree, h.minute),
+                          absoluteDegree: signToAbsoluteDegree(h.sign, h.degree, h.minute),
                           planets: [],
                         }))}
                         aspects={(selProfile.aspects || []).map((as2: any) => ({
@@ -1062,7 +778,7 @@ export default function AstralFamilyHome() {
                           sign: cp.sign,
                           degree: cp.degree,
                           minute: cp.minute,
-                          absoluteDegree: signToAbs(cp.sign, cp.degree, cp.minute),
+                          absoluteDegree: signToAbsoluteDegree(cp.sign, cp.degree, cp.minute),
                           house: cp.house,
                         }))}
                         primaryColor={p}
@@ -1196,6 +912,7 @@ export default function AstralFamilyHome() {
                 {/* 🌟 Decanato Solar & Sub-Regencia Planetaria */}
                 <div className="mt-6">
                   <DecanateCard
+                    key={selProfile.id}
                     profile={selProfile}
                     primaryColor={p}
                     secondaryColor={sColor}
@@ -1207,7 +924,6 @@ export default function AstralFamilyHome() {
 
                 {/* 📊 Compact Bottom Section: Aspectario & Placidus Cusps Side-by-Side */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6 items-start">
-                  {/* Compact Aspectario */}
                   <div
                     className="backdrop-blur-xl border p-4 sm:p-5 shadow-2xl rounded-2xl flex flex-col justify-start"
                     style={{ background: cBg, borderRadius: rad, borderColor: `${p}30` }}
@@ -1222,13 +938,12 @@ export default function AstralFamilyHome() {
                     <div className="overflow-x-auto w-full">
                       <AspectarioGrid
                         aspects={selProfile.aspects || []}
-                        bodies={['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','Ascendant','MC']}
+                        bodies={['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Ascendant', 'MC']}
                         primaryColor={p}
                       />
                     </div>
                   </div>
 
-                  {/* Compact Placidus Cusps */}
                   <div
                     className="backdrop-blur-xl border p-4 sm:p-5 shadow-2xl rounded-2xl flex flex-col justify-start"
                     style={{ background: cBg, borderRadius: rad, borderColor: `${a}30` }}
@@ -1273,49 +988,27 @@ export default function AstralFamilyHome() {
               </div>
             )}
           </main>
-
-          {/* Transits Information Modal */}
-          <TransitsInfoModal
-            isOpen={showTransitsInfoModal}
-            onClose={() => setShowTransitsInfoModal(false)}
-            showTransits={showTransits}
-            onToggleTransits={() => setShowTransits(prev => !prev)}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            borderRadius={rad}
-          />
         </div>
-      </DynamicCosmicBackground>
-    );
-  }
+      );
+    }
 
-  // SYNASTRY VIEW
-  if (view === 'synastry') {
+    // Authenticated views sharing DashboardHeader
     return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+      <div className="min-h-screen flex flex-col">
+        <DashboardHeader
+          currentView={effectiveView}
+          setView={setView}
+          userName={user?.name}
+          userRole={user?.role}
+          userAvatar={user?.avatar}
+          primaryColor={p}
+          secondaryColor={sColor}
+          accentColor={a}
+          cardBg={cBg}
+          onLogout={logout}
+        />
+
+        {effectiveView === 'synastry' && (
           <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
             <FamilyTreePanel
               profiles={profiles}
@@ -1331,60 +1024,15 @@ export default function AstralFamilyHome() {
                 setSelProfile(prof);
                 setView('chart');
               }}
-              onLinkFamily={(profId) => {
-                setLinkModalProfileAId(profId);
-                setShowLinkModal(true);
-              }}
-              onAddChild={(parentProfileId) => {
-                setAddProfileParentId(parentProfileId || null);
-                setAddProfilePartnerId(null);
-                setAddProfileSiblingId(null);
-                setView('addProfile');
-              }}
-              onAddPartner={(profileId) => {
-                setAddProfilePartnerId(profileId || null);
-                setAddProfileParentId(null);
-                setAddProfileSiblingId(null);
-                setView('addProfile');
-              }}
-              onAddSibling={(profileId) => {
-                setAddProfileSiblingId(profileId || null);
-                setAddProfileParentId(null);
-                setAddProfilePartnerId(null);
-                setView('addProfile');
-              }}
+              onLinkFamily={(profId) => openLinkModalFor(profId)}
+              onAddChild={(parentProfileId) => openAddRelative({ parentId: parentProfileId })}
+              onAddPartner={(profileId) => openAddRelative({ partnerId: profileId })}
+              onAddSibling={(profileId) => openAddRelative({ siblingId: profileId })}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // ADD PROFILE VIEW (Admin or Member for self/children/partner/sibling)
-  if (view === 'addProfile') {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+        {effectiveView === 'addProfile' && (
           <main className="max-w-xl mx-auto px-4 py-8">
             <div className="text-center mb-6">
               <h1 className="text-2xl font-light text-white tracking-wider mb-1">✦ Registrar Integrante, Pareja, Hermano/a o Hijo/a</h1>
@@ -1404,36 +1052,9 @@ export default function AstralFamilyHome() {
               onSave={handleSaveProfile}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // CUSTOMIZE VIEW
-  if (view === 'customize') {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+        {effectiveView === 'customize' && (
           <main className="max-w-3xl mx-auto px-4 py-8">
             <div className="text-center mb-6">
               <h1 className="text-2xl font-light text-white tracking-wider mb-1">🎨 Personalización Visual</h1>
@@ -1446,40 +1067,9 @@ export default function AstralFamilyHome() {
               onSaveTheme={saveThemeSettings}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // INVITATIONS VIEW (Admin Only)
-  if (view === 'invitations') {
-    if (user?.role !== 'admin') {
-      setView('dashboard');
-      return null;
-    }
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+        {effectiveView === 'invitations' && (
           <main className="max-w-3xl mx-auto px-4 py-8">
             <div className="text-center mb-6">
               <h1 className="text-2xl font-light text-white tracking-wider mb-1">🎫 Gestión de Invitaciones</h1>
@@ -1501,36 +1091,9 @@ export default function AstralFamilyHome() {
               onDeleteInvitation={handleDeleteInvitation}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // PROFILE SETTINGS VIEW (For all users, including Admin)
-  if (view === 'profileSettings') {
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+        {effectiveView === 'profileSettings' && (
           <main className="max-w-2xl mx-auto w-full px-4 py-8">
             <div className="text-center mb-6">
               <h1 className="text-2xl font-light text-white tracking-wider mb-1">⚙️ Configuración de Cuenta</h1>
@@ -1543,28 +1106,10 @@ export default function AstralFamilyHome() {
               cardBg={cBg}
               borderRadius={rad}
               profiles={profiles}
-              onLinkFamily={(profId) => {
-                setLinkModalProfileAId(profId || null);
-                setShowLinkModal(true);
-              }}
-              onAddChild={(parentId) => {
-                setAddProfileParentId(parentId || null);
-                setAddProfilePartnerId(null);
-                setAddProfileSiblingId(null);
-                setView('addProfile');
-              }}
-              onAddPartner={(profId) => {
-                setAddProfilePartnerId(profId || null);
-                setAddProfileParentId(null);
-                setAddProfileSiblingId(null);
-                setView('addProfile');
-              }}
-              onAddSibling={(profId) => {
-                setAddProfileSiblingId(profId || null);
-                setAddProfileParentId(null);
-                setAddProfilePartnerId(null);
-                setView('addProfile');
-              }}
+              onLinkFamily={(profId) => openLinkModalFor(profId)}
+              onAddChild={(parentId) => openAddRelative({ parentId })}
+              onAddPartner={(profId) => openAddRelative({ partnerId: profId })}
+              onAddSibling={(profId) => openAddRelative({ siblingId: profId })}
               onSuccessNotification={(msg) => {
                 notify(msg, 'success');
                 fetchProfiles();
@@ -1572,40 +1117,9 @@ export default function AstralFamilyHome() {
               onErrorNotification={(msg) => notify(msg, 'error')}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // USERS ADMIN VIEW (Admin Only)
-  if (view === 'usersAdmin') {
-    if (user?.role !== 'admin') {
-      setView('dashboard');
-      return null;
-    }
-    return (
-      <DynamicCosmicBackground
-        primaryColor={p}
-        accentColor={a}
-        cardOpacity={theme?.cardOpacity}
-        backgroundType={bgType}
-        backgroundImage={bgImage}
-        gradientColors={themeGradientColors}
-        backgroundColor={theme?.backgroundColor}
-      >
-        <div className="min-h-screen flex flex-col">
-          <DashboardHeader
-            currentView={view}
-            setView={setView}
-            userName={user?.name}
-            userRole={user?.role}
-            userAvatar={user?.avatar}
-            primaryColor={p}
-            secondaryColor={sColor}
-            accentColor={a}
-            cardBg={cBg}
-            onLogout={logout}
-          />
+        {effectiveView === 'usersAdmin' && (
           <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
             <UsersAdminPanel
               primaryColor={p}
@@ -1620,27 +1134,85 @@ export default function AstralFamilyHome() {
               onErrorNotification={(msg) => notify(msg, 'error')}
             />
           </main>
-        </div>
-      </DynamicCosmicBackground>
-    );
-  }
+        )}
 
-  // DASHBOARD VIEW (Sorted chronologically by birth year / birth date from oldest to youngest)
-  const sortedProfiles = [...profiles].sort((a, b) => {
-    const dateA = a.birthDate ? new Date(a.birthDate).getTime() : 0;
-    const dateB = b.birthDate ? new Date(b.birthDate).getTime() : 0;
-    return dateA - dateB;
-  });
-  const filtered = sortedProfiles.filter(pr => {
-    const matchesSearch = pr.name.toLowerCase().includes(searchQ.toLowerCase());
-    if (!matchesSearch) return false;
-    if (!selectedZodiacSign) return true;
-    const sun = pr.planetaryPositions?.find(pp => pp.body === 'Sun');
-    if (!sun?.sign) return false;
-    const signLower = sun.sign.toLowerCase();
-    const filterLower = selectedZodiacSign.toLowerCase();
-    return signLower.startsWith(filterLower.slice(0, 3)) || filterLower.startsWith(signLower.slice(0, 3));
-  });
+        {effectiveView === 'dashboard' && (
+          <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-white text-lg font-light tracking-wide flex items-center gap-2">
+                  <span>✦ Cartas Astrales Familiares</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full border border-white/10" style={{ background: `${p}20`, color: p }}>
+                    {profiles.length} registradas
+                  </span>
+                </h2>
+                <p className="text-white/40 text-xs mt-0.5">
+                  Selecciona cualquier miembro de la familia para explorar su carta natal completa
+                </p>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <input
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                  placeholder="🔍 Buscar por nombre..."
+                  className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-white placeholder-white/40 text-xs focus:outline-none focus:border-purple-400 transition-all shadow-inner"
+                />
+              </div>
+            </div>
+
+            {profiles.length > 0 && (
+              <ZodiacSignCounterBar
+                profiles={profiles}
+                selectedSign={selectedZodiacSign}
+                onSelectSign={setSelectedZodiacSign}
+                selectedElement={selectedElement}
+                onSelectElement={setSelectedElement}
+                primaryColor={p}
+                secondaryColor={sColor}
+                accentColor={a}
+              />
+            )}
+
+            {!profiles.length ? (
+              <div className="text-center py-20 backdrop-blur-xl border border-white/5 rounded-2xl p-8" style={{ background: cBg }}>
+                <div className="text-5xl mb-4 opacity-30">🌌</div>
+                <p className="text-white/60 text-sm mb-2">No hay cartas astrales registradas aún</p>
+                <button
+                  onClick={() => openAddRelative({})}
+                  className="px-6 py-2.5 rounded-xl text-xs font-semibold shadow-lg hover:opacity-90 transition-opacity cursor-pointer text-white mt-2"
+                  style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
+                >
+                  + Registrar persona
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredProfiles.map(profile => {
+                  const canAdd = user?.role === 'admin' || isOwnProfile(profile);
+                  return (
+                    <ProfileCard
+                      key={profile.id}
+                      profile={profile}
+                      primaryColor={p}
+                      secondaryColor={sColor}
+                      accentColor={a}
+                      cardBg={cBg}
+                      borderRadius={rad}
+                      onSelect={(pr) => {
+                        setSelProfile(pr);
+                        setView('chart');
+                      }}
+                      onLinkFamily={canAdd ? (prof) => openLinkModalFor(prof.id) : undefined}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </main>
+        )}
+      </div>
+    );
+  };
 
   return (
     <DynamicCosmicBackground
@@ -1652,121 +1224,30 @@ export default function AstralFamilyHome() {
       gradientColors={themeGradientColors}
       backgroundColor={theme?.backgroundColor}
     >
-      <div className="min-h-screen flex flex-col">
-        <DashboardHeader
-          currentView={view}
-          setView={setView}
-          userName={user?.name}
-          userRole={user?.role}
-          userAvatar={user?.avatar}
-          primaryColor={p}
-          secondaryColor={sColor}
-          accentColor={a}
-          cardBg={cBg}
-          onLogout={logout}
-        />
+      {renderContent()}
 
-        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h2 className="text-white text-lg font-light tracking-wide flex items-center gap-2">
-                <span>✦ Cartas Astrales Familiares</span>
-                <span className="text-xs px-2 py-0.5 rounded-full border border-white/10" style={{ background: `${p}20`, color: p }}>
-                  {profiles.length} registradas
-                </span>
-              </h2>
-              <p className="text-white/40 text-xs mt-0.5">
-                Selecciona cualquier miembro de la familia para explorar su carta natal completa
-              </p>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <input
-                value={searchQ}
-                onChange={e => setSearchQ(e.target.value)}
-                placeholder="🔍 Buscar por nombre..."
-                className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-white placeholder-white/40 text-xs focus:outline-none focus:border-purple-400 transition-all shadow-inner"
-              />
-            </div>
+      {/* Floating Notifications (global across all views) */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
+        {notifs.map(n => (
+          <div
+            key={n.id}
+            className={`px-4 py-2.5 rounded-lg text-xs backdrop-blur-xl border shadow-lg transition-all ${
+              n.type === 'error'
+                ? 'bg-rose-950/80 text-rose-200 border-rose-500/30'
+                : n.type === 'success'
+                ? 'bg-emerald-950/80 text-emerald-200 border-emerald-500/30'
+                : 'bg-gray-900/90 text-white/90 border-white/10'
+            }`}
+          >
+            ✦ {n.msg}
           </div>
+        ))}
+      </div>
 
-          {/* Mediana Barra Transparente de Contador de Signos Zodíacales */}
-          {profiles.length > 0 && (
-            <ZodiacSignCounterBar
-              profiles={profiles}
-              selectedSign={selectedZodiacSign}
-              onSelectSign={setSelectedZodiacSign}
-              primaryColor={p}
-              secondaryColor={sColor}
-              accentColor={a}
-            />
-          )}
-
-          {!profiles.length ? (
-            <div className="text-center py-20 backdrop-blur-xl border border-white/5 rounded-2xl p-8" style={{ background: cBg }}>
-              <div className="text-5xl mb-4 opacity-30">🌌</div>
-              <p className="text-white/60 text-sm mb-2">No hay cartas astrales registradas aún</p>
-              <button
-                onClick={() => {
-                  setAddProfileParentId(null);
-                  setAddProfilePartnerId(null);
-                  setAddProfileSiblingId(null);
-                  setView('addProfile');
-                }}
-                className="px-6 py-2.5 rounded-xl text-xs font-semibold shadow-lg hover:opacity-90 transition-opacity cursor-pointer text-white mt-2"
-                style={{ background: `linear-gradient(135deg, ${p}, ${sColor})` }}
-              >
-                + Registrar persona
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map(profile => {
-                const canAdd = user?.role === 'admin' || isOwnProfile(profile);
-
-                return (
-                  <ProfileCard
-                    key={profile.id}
-                    profile={profile}
-                    primaryColor={p}
-                    secondaryColor={sColor}
-                    accentColor={a}
-                    cardBg={cBg}
-                    borderRadius={rad}
-                    onSelect={(pr) => {
-                      setSelProfile(pr);
-                      setView('chart');
-                    }}
-                    onLinkFamily={canAdd ? (prof) => {
-                      setLinkModalProfileAId(prof.id);
-                      setShowLinkModal(true);
-                    } : undefined}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </main>
-
-        {/* Floating Notifications */}
-        <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
-          {notifs.map(n => (
-            <div
-              key={n.id}
-              className={`px-4 py-2.5 rounded-lg text-xs backdrop-blur-xl border shadow-lg transition-all ${
-                n.type === 'error'
-                  ? 'bg-rose-950/80 text-rose-200 border-rose-500/30'
-                  : n.type === 'success'
-                  ? 'bg-emerald-950/80 text-emerald-200 border-emerald-500/30'
-                  : 'bg-gray-900/90 text-white/90 border-white/10'
-              }`}
-            >
-              ✦ {n.msg}
-            </div>
-          ))}
-        </div>
-
-        {/* Family Link Modal */}
+      {/* Global Family Link Modal (works from Dashboard, Chart, FamilyTree & ProfileSettings) */}
+      {isAuthenticated && (
         <LinkFamilyModal
+          key={linkModalProfileAId || 'default'}
           isOpen={showLinkModal}
           onClose={() => setShowLinkModal(false)}
           profiles={profiles}
@@ -1782,18 +1263,21 @@ export default function AstralFamilyHome() {
           borderRadius={rad}
           onSuccess={(msg) => {
             notify(msg, 'success');
+            socketRef.current?.emit('profile-updated', {});
             fetchProfiles();
           }}
           onError={(msg) => notify(msg, 'error')}
           onRegisterNew={(memberId, relType) => {
-            if (relType === 'partner') setAddProfilePartnerId(memberId || null);
-            else if (relType === 'sibling') setAddProfileSiblingId(memberId || null);
-            else if (relType === 'parent' || relType === 'child') setAddProfileParentId(memberId || null);
-            setView('addProfile');
+            if (relType === 'partner') openAddRelative({ partnerId: memberId });
+            else if (relType === 'sibling') openAddRelative({ siblingId: memberId });
+            else if (relType === 'parent' || relType === 'child') openAddRelative({ parentId: memberId });
+            else openAddRelative({});
           }}
         />
+      )}
 
-        {/* Transits Information Modal */}
+      {/* Global Transits Information Modal */}
+      {isAuthenticated && (
         <TransitsInfoModal
           isOpen={showTransitsInfoModal}
           onClose={() => setShowTransitsInfoModal(false)}
@@ -1805,7 +1289,7 @@ export default function AstralFamilyHome() {
           cardBg={cBg}
           borderRadius={rad}
         />
-      </div>
+      )}
     </DynamicCosmicBackground>
   );
 }

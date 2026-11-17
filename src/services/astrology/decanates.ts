@@ -758,26 +758,8 @@ export const DECANATES_DATABASE: Record<string, Record<1 | 2 | 3, DecanateInfo>>
   }
 };
 
-/**
- * Helper to normalize sign names (English or Spanish) to the canonical English key
- */
-export function canonicalSignName(rawSign?: string): string {
-  if (!rawSign) return 'Aries';
-  const s = rawSign.trim().toLowerCase();
-  if (s.startsWith('ari')) return 'Aries';
-  if (s.startsWith('tau')) return 'Taurus';
-  if (s.startsWith('gém') || s.startsWith('gem')) return 'Gemini';
-  if (s.startsWith('cán') || s.startsWith('can')) return 'Cancer';
-  if (s.startsWith('leo')) return 'Leo';
-  if (s.startsWith('vir')) return 'Virgo';
-  if (s.startsWith('lib')) return 'Libra';
-  if (s.startsWith('esc') || s.startsWith('sco')) return 'Scorpio';
-  if (s.startsWith('sag')) return 'Sagittarius';
-  if (s.startsWith('cap')) return 'Capricorn';
-  if (s.startsWith('acu') || s.startsWith('aqu')) return 'Aquarius';
-  if (s.startsWith('pis')) return 'Pisces';
-  return 'Aries';
-}
+import { canonicalSignName } from './utils';
+export { canonicalSignName };
 
 /**
  * Calculates the Decanate (1, 2, or 3) from a degree within the sign (0 to 30).

@@ -2,11 +2,8 @@ import {
   ZodiacSign,
   Element,
   Modality,
-  Planet,
   AspectType,
   ZODIAC_SIGNS,
-  ELEMENTS,
-  MODALITIES,
 } from '@/types/astrology';
 
 export function normalizeDegree(deg: number): number {
@@ -222,24 +219,108 @@ export function getModalityDistribution(
   };
 }
 
-export function toRad(deg: number): number {
-  return (deg * Math.PI) / 180;
+export const SIGN_NAMES_ES: Record<ZodiacSign, string> = {
+  Aries: 'Aries',
+  Taurus: 'Tauro',
+  Gemini: 'Géminis',
+  Cancer: 'Cáncer',
+  Leo: 'Leo',
+  Virgo: 'Virgo',
+  Libra: 'Libra',
+  Scorpio: 'Escorpio',
+  Sagittarius: 'Sagitario',
+  Capricorn: 'Capricornio',
+  Aquarius: 'Acuario',
+  Pisces: 'Piscis',
+};
+
+export const PLANET_NAMES_ES: Record<string, string> = {
+  Sun: 'Sol',
+  Moon: 'Luna',
+  Mercury: 'Mercurio',
+  Venus: 'Venus',
+  Mars: 'Marte',
+  Jupiter: 'Júpiter',
+  Saturn: 'Saturno',
+  Uranus: 'Urano',
+  Neptune: 'Neptuno',
+  Pluto: 'Plutón',
+  Ascendant: 'Ascendente (AC)',
+  MC: 'Medio Cielo (MC)',
+  DESC: 'Descendente (DC)',
+  IC: 'Fondo Cielo (IC)',
+  NorthNode: 'Nodo Norte',
+  SouthNode: 'Nodo Sur',
+  Chiron: 'Quirón',
+  Lilith: 'Lilith (Luna Negra)',
+  PartOfFortune: 'Parte de Fortuna',
+};
+
+/**
+ * Normalizes sign names (English or Spanish) to the canonical English ZodiacSign key
+ */
+export function canonicalSignName(rawSign?: string): ZodiacSign {
+  if (!rawSign) return 'Aries';
+  const s = rawSign.trim().toLowerCase();
+  if (s.startsWith('ari')) return 'Aries';
+  if (s.startsWith('tau')) return 'Taurus';
+  if (s.startsWith('gém') || s.startsWith('gem')) return 'Gemini';
+  if (s.startsWith('cán') || s.startsWith('can')) return 'Cancer';
+  if (s.startsWith('leo')) return 'Leo';
+  if (s.startsWith('vir')) return 'Virgo';
+  if (s.startsWith('lib')) return 'Libra';
+  if (s.startsWith('esc') || s.startsWith('sco')) return 'Scorpio';
+  if (s.startsWith('sag')) return 'Sagittarius';
+  if (s.startsWith('cap')) return 'Capricorn';
+  if (s.startsWith('acu') || s.startsWith('aqu')) return 'Aquarius';
+  if (s.startsWith('pis')) return 'Pisces';
+  return 'Aries';
 }
 
-export function toDeg(rad: number): number {
-  return (rad * 180) / Math.PI;
+export function getSignNameEs(sign: string): string {
+  const canonical = canonicalSignName(sign);
+  return SIGN_NAMES_ES[canonical] || sign;
 }
 
-export function julianDay(year: number, month: number, day: number, hour: number = 0): number {
-  if (month <= 2) {
-    year -= 1;
-    month += 12;
+export function getPlanetNameEs(body: string): string {
+  return PLANET_NAMES_ES[body] || body;
+}
+
+export function signToAbsoluteDegree(sign: string, degree: number, minute: number = 0): number {
+  const canonical = canonicalSignName(sign);
+  const index = ZODIAC_SIGNS.indexOf(canonical);
+  return (index >= 0 ? index * 30 : 0) + degree + minute / 60;
+}
+
+export function formatBirthDate(ds?: string): string {
+  if (!ds) return '';
+  try {
+    const parts = ds.includes('-') ? ds.split('-') : ds.split('/');
+    if (parts.length < 3) return ds;
+    const [y, m, d] = parts;
+    const ms = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const monthIdx = parseInt(m, 10) - 1;
+    const dayNum = parseInt(d, 10);
+    if (isNaN(dayNum) || isNaN(monthIdx) || !ms[monthIdx]) return ds;
+    return `${dayNum} de ${ms[monthIdx]} de ${y}`;
+  } catch {
+    return ds || '';
   }
-  const A = Math.floor(year / 100);
-  const B = 2 - A + Math.floor(A / 4);
-  return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + hour / 24.0 + B - 1524.5;
 }
 
-export function daysSinceJ2000(jd: number): number {
-  return jd - 2451545.0;
+export function calculateAge(birthDateStr?: string): number {
+  if (!birthDateStr) return 0;
+  try {
+    const birth = new Date(birthDateStr);
+    if (isNaN(birth.getTime())) return 0;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age > 0 ? age : 0;
+  } catch {
+    return 0;
+  }
 }

@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import { jwtVerify } from 'jose';
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'astral-family-secret-jwt-key'
+  process.env.JWT_SECRET || 'astral-family-secret-key-change-in-production'
 );
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS

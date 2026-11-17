@@ -86,7 +86,26 @@ export default function UsersAdminPanel({
   };
 
   useEffect(() => {
-    fetchUsers();
+    if (!token) return;
+    let cancelled = false;
+    fetch('/api/users', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!cancelled && ok && data.users) {
+          setUsers(data.users);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) onErrorNotification?.('Error al cargar la lista de usuarios');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const handleStartEdit = (targetUser: UserData) => {

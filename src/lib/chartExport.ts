@@ -2,32 +2,42 @@
  * Utility functions for exporting Astrology SVG Charts to SVG, PNG, and Print
  */
 
-export function exportSvgToFile(svgElementId: string, fileName: string = 'carta-astral.svg') {
-  if (typeof window === 'undefined') return;
+function serializeSvgElement(svgElementId: string, includeXlink: boolean = false): string | null {
+  if (typeof window === 'undefined') return null;
   const svg = document.getElementById(svgElementId);
-  if (!svg) return;
+  if (!svg) return null;
 
   const serializer = new XMLSerializer();
   let source = serializer.serializeToString(svg);
 
-  // Add namespaces if not present
   if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
     source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
   }
-  if (!source.match(/^<svg[^>]+xmlns:xlink="http:\/\/www\.w3\.org\/1999\/xlink"/)) {
+  if (includeXlink && !source.match(/^<svg[^>]+xmlns:xlink="http:\/\/www\.w3\.org\/1999\/xlink"/)) {
     source = source.replace(/^<svg/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
   }
+
+  return source;
+}
+
+function triggerDownload(url: string, fileName: string, extension: string) {
+  const downloadLink = document.createElement('a');
+  downloadLink.href = url;
+  downloadLink.download = fileName.endsWith(extension) ? fileName : `${fileName}${extension}`;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+}
+
+export function exportSvgToFile(svgElementId: string, fileName: string = 'carta-astral.svg') {
+  const source = serializeSvgElement(svgElementId, true);
+  if (!source) return;
 
   const preface = '<?xml version="1.0" standalone="no"?>\r\n';
   const svgBlob = new Blob([preface, source], { type: 'image/svg+xml;charset=utf-8' });
   const svgUrl = URL.createObjectURL(svgBlob);
 
-  const downloadLink = document.createElement('a');
-  downloadLink.href = svgUrl;
-  downloadLink.download = fileName.endsWith('.svg') ? fileName : `${fileName}.svg`;
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
+  triggerDownload(svgUrl, fileName, '.svg');
   URL.revokeObjectURL(svgUrl);
 }
 
@@ -36,48 +46,35 @@ export function exportPngFromFile(
   fileName: string = 'carta-astral.png',
   backgroundColor: string = '#0f0a1a'
 ) {
-  if (typeof window === 'undefined') return;
-  const svg = document.getElementById(svgElementId) as SVGElement | null;
-  if (!svg) return;
-
-  const serializer = new XMLSerializer();
-  let source = serializer.serializeToString(svg);
-
-  if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
-    source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
-  }
+  const source = serializeSvgElement(svgElementId, false);
+  if (!source) return;
 
   const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-  const URLObj = window.URL || window.webkitURL || window;
-  const blobURL = URLObj.createObjectURL(svgBlob);
+  const blobURL = URL.createObjectURL(svgBlob);
 
   const image = new Image();
   image.onload = () => {
     const canvas = document.createElement('canvas');
-    const scale = 2; // 2x high resolution
-    const width = 1000;
-    const height = 1000;
-    canvas.width = width;
-    canvas.height = height;
+    const size = 1200;
+    canvas.width = size;
+    canvas.height = size;
 
     const context = canvas.getContext('2d');
-    if (!context) return;
+    if (!context) {
+      URL.revokeObjectURL(blobURL);
+      return;
+    }
 
-    // Fill background
     context.fillStyle = backgroundColor;
-    context.fillRect(0, 0, width, height);
-
-    // Draw SVG image
-    context.drawImage(image, 0, 0, width, height);
+    context.fillRect(0, 0, size, size);
+    context.drawImage(image, 0, 0, size, size);
 
     const pngUrl = canvas.toDataURL('image/png');
-    const downloadLink = document.createElement('a');
-    downloadLink.href = pngUrl;
-    downloadLink.download = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URLObj.revokeObjectURL(blobURL);
+    triggerDownload(pngUrl, fileName, '.png');
+    URL.revokeObjectURL(blobURL);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(blobURL);
   };
   image.src = blobURL;
 }
