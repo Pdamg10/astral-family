@@ -79,12 +79,21 @@ export default function ProfileCard({
             <span className="font-medium text-white/80">{profile.city}, {profile.country}</span>
           </div>
 
-          {profile.partner && (
-            <div className="flex justify-between items-center pt-1 text-[11px]">
-              <span className="text-white/40">Pareja</span>
-              <span className="font-medium text-pink-300">💍 {profile.partner.name}</span>
-            </div>
-          )}
+          {(() => {
+            const partnerList = profile.partners?.length ? profile.partners : (profile.partner ? [profile.partner] : []);
+            if (partnerList.length === 0) return null;
+            const names = partnerList.map(pt => pt.name).join(', ');
+            return (
+              <div className="flex justify-between items-center pt-1 text-[11px]">
+                <span className="text-white/40">
+                  {partnerList.length > 1 ? `Parejas (${partnerList.length})` : 'Pareja'}
+                </span>
+                <span className="font-medium text-pink-300 truncate max-w-[150px]" title={names}>
+                  💍 {names}
+                </span>
+              </div>
+            );
+          })()}
 
           {(profile.parent || profile.parent2) && (
             <div className="flex justify-between items-center pt-1 text-[11px]">
@@ -154,6 +163,33 @@ export default function ProfileCard({
               <span className="text-white/40">Hijos ({profile.children?.length})</span>
               <span className="font-medium text-amber-300 truncate max-w-[150px]" title={profile.children?.map(c => c.name).join(', ')}>
                 👶 {profile.children?.map(c => c.name).join(', ')}
+              </span>
+            </div>
+          )}
+
+          {profile.grandchildren && profile.grandchildren.length > 0 && (
+            <div className="flex justify-between items-center pt-1 text-[11px]">
+              <span className="text-white/40">Nietos ({profile.grandchildren.length})</span>
+              <span className="font-medium text-rose-300 truncate max-w-[150px]" title={profile.grandchildren.map(g => g.name).join(', ')}>
+                🧒 {profile.grandchildren.map(g => g.name).join(', ')}
+              </span>
+            </div>
+          )}
+
+          {profile.parentsInLaw && profile.parentsInLaw.length > 0 && (
+            <div className="flex justify-between items-center pt-1 text-[11px]">
+              <span className="text-white/40">Suegros ({profile.parentsInLaw.length})</span>
+              <span className="font-medium text-violet-300 truncate max-w-[150px]" title={profile.parentsInLaw.map(s => s.name).join(', ')}>
+                🏛️ {profile.parentsInLaw.map(s => s.name).join(', ')}
+              </span>
+            </div>
+          )}
+
+          {profile.childrenInLaw && profile.childrenInLaw.length > 0 && (
+            <div className="flex justify-between items-center pt-1 text-[11px]">
+              <span className="text-white/40">Yernos/Nueras ({profile.childrenInLaw.length})</span>
+              <span className="font-medium text-fuchsia-300 truncate max-w-[150px]" title={profile.childrenInLaw.map(y => y.name).join(', ')}>
+                💐 {profile.childrenInLaw.map(y => y.name).join(', ')}
               </span>
             </div>
           )}

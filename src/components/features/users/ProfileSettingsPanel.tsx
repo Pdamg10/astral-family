@@ -439,16 +439,24 @@ export default function ProfileSettingsPanel({
             const myChildren = myProfile?.children || [];
             const myParent = myProfile?.parent;
             const myParent2 = myProfile?.parent2;
-            const myPartner = myProfile?.partner;
+            const myPartners = myProfile?.partners?.length ? myProfile.partners : (myProfile?.partner ? [myProfile.partner] : []);
             const mySiblings = myProfile?.siblings || [];
 
             return (
               <div className="space-y-2 pt-1">
-                {/* Pareja */}
-                {myPartner && (
-                  <div className="text-xs text-white/80 bg-pink-500/10 p-2.5 rounded-lg border border-pink-500/20 flex items-center justify-between">
-                    <span className="text-pink-300">💍 Tu Pareja vinculada:</span>
-                    <span className="font-semibold text-white">{myPartner.name}</span>
+                {/* Pareja(s) */}
+                {myPartners.length > 0 && (
+                  <div className="text-xs text-white/80 bg-pink-500/10 p-2.5 rounded-lg border border-pink-500/20 space-y-1">
+                    <span className="text-pink-300 font-medium block">
+                      💍 {myPartners.length > 1 ? `Tus Parejas vinculadas (${myPartners.length}):` : 'Tu Pareja vinculada:'}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {myPartners.map(pt => (
+                        <span key={pt.id} className="px-2 py-0.5 rounded bg-pink-500/20 border border-pink-500/30 text-pink-100 text-[11px] font-semibold">
+                          💍 {pt.name}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 

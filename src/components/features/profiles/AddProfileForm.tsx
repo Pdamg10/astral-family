@@ -1,8 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { searchCities } from '@/lib/cities';
 import type { CityData } from '@/lib/cities';
 import type { BirthProfile } from '@/types/prisma-types';
+import { RelationshipType, RELATIONSHIP_OPTIONS, validateRelationshipAges } from '@/lib/genealogy';
+import { calculateAge } from '@/services/astrology/utils';
 
 interface AddProfileFormProps {
   primaryColor: string;
@@ -29,6 +31,8 @@ interface AddProfileFormProps {
     parent2Id?: string | null;
     partnerId?: string | null;
     siblingId?: string | null;
+    linkTargetId?: string | null;
+    linkRelationship?: RelationshipType | null;
   }) => Promise<boolean>;
 }
 
@@ -50,7 +54,7 @@ export default function AddProfileForm({
     p => p.createdBy === currentUserId || (currentUserName && p.name.trim().toLowerCase() === currentUserName.trim().toLowerCase())
   );
   const initialMemberId = defaultPartnerId || defaultSiblingId || defaultParentId || null;
-  const initialRelType: 'partner' | 'sibling' | 'child' | 'parent' | 'none' = defaultPartnerId
+  const initialRelType: RelationshipType | 'none' = defaultPartnerId
     ? 'partner'
     : defaultSiblingId
     ? 'sibling'
@@ -65,11 +69,22 @@ export default function AddProfileForm({
   const [bpCS, setBpCS] = useState('');
   const [bpC, setBpC] = useState<CityData | null>(null);
   const [targetMemberId, setTargetMemberId] = useState<string | null>(initialMemberId);
-  const [relType, setRelType] = useState<'partner' | 'sibling' | 'child' | 'parent' | 'none'>(initialRelType);
+  const [relType, setRelType] = useState<RelationshipType | 'none'>(initialRelType);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const cityRes = searchCities(bpCS);
+  const selectedTarget = existingProfiles.find(p => p.id === targetMemberId);
+
+  // Real-time generational validation when registering a new member with a relationship
+  const ageValidation = useMemo(() => {
+    if (!selectedTarget || !bpD || relType === 'none') return { valid: true };
+    return validateRelationshipAges(
+      { name: bpN.trim() || 'Esta persona', birthDate: bpD },
+      relType,
+      selectedTarget
+    );
+  }, [bpN, bpD, relType, selectedTarget]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,15 +95,24 @@ export default function AddProfileForm({
       return;
     }
 
+    if (!ageValidation.valid) {
+      setErrorMsg(ageValidation.error || 'Inconsistencia generacional en las edades');
+      return;
+    }
+
     let pId: string | null = null;
     let p2Id: string | null = null;
     let partId: string | null = null;
     let sibId: string | null = null;
+    let linkTargetId: string | null = null;
+    let linkRelationship: RelationshipType | null = null;
 
     if (targetMemberId && relType !== 'none') {
       const targetProf = existingProfiles.find(p => p.id === targetMemberId);
       if (relType === 'partner') {
         partId = targetMemberId;
+        linkTargetId = targetMemberId;
+        linkRelationship = 'partner';
       } else if (relType === 'sibling') {
         sibId = targetMemberId;
         if (targetProf) {
@@ -100,6 +124,10 @@ export default function AddProfileForm({
         if (targetProf?.partner) {
           p2Id = targetProf.partner.id || null;
         }
+      } else {
+        // parent, grandparent, grandchild, uncle_aunt, niece_nephew, cousin, parent_in_law, child_in_law, in_law
+        linkTargetId = targetMemberId;
+        linkRelationship = relType;
       }
     }
 
@@ -118,6 +146,8 @@ export default function AddProfileForm({
       parent2Id: p2Id,
       partnerId: partId,
       siblingId: sibId,
+      linkTargetId,
+      linkRelationship,
     });
 
     setIsSaving(false);
@@ -135,8 +165,6 @@ export default function AddProfileForm({
 
   const inp = 'w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:border-purple-500/50';
   const btn = 'w-full py-3 rounded-lg text-sm font-medium transition-all hover:opacity-90 cursor-pointer';
-
-  const selectedTarget = existingProfiles.find(p => p.id === targetMemberId);
 
   return (
     <form
@@ -165,10 +193,10 @@ export default function AddProfileForm({
       <div className="p-4 rounded-xl bg-black/40 border border-white/10 space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-xs font-semibold text-white/80 flex items-center gap-1.5">
-            <span>🔗</span>
-            <span>Vínculo Familiar / Parentesco (Opcional)</span>
+            <span>🌳</span>
+            <span>Vínculo en el Árbol Genealógico (Opcional)</span>
           </label>
-          <span className="text-[10px] text-purple-300">Selección Rápida</span>
+          <span className="text-[10px] text-purple-300">Abuelos → Nietos</span>
         </div>
 
         <div>
@@ -186,63 +214,51 @@ export default function AddProfileForm({
             <option value="" className="bg-gray-900 text-white">🌱 Sin vínculo directo (Miembro independiente / Raíz)</option>
             {existingProfiles.map(p => (
               <option key={p.id} value={p.id} className="bg-gray-900 text-white">
-                👤 {p.name} {p.birthDate ? `(nac. ${p.birthDate.split('-')[0]})` : ''}
+                👤 {p.name} {p.birthDate ? `(${calculateAge(p.birthDate)} años · nac. ${p.birthDate.split('-')[0]})` : ''}
               </option>
             ))}
           </select>
         </div>
 
         {targetMemberId && (
-          <div>
-            <label className="block text-white/50 text-[11px] mb-1.5">
-              ¿Qué parentesco tiene con <strong className="text-purple-300">{selectedTarget?.name}</strong>?
+          <div className="space-y-2.5">
+            <label className="block text-white/50 text-[11px]">
+              ¿Qué parentesco tiene <strong className="text-white">{bpN.trim() || 'esta persona'}</strong> con{' '}
+              <strong className="text-purple-300">{selectedTarget?.name}</strong>?
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setRelType('partner')}
-                className={`p-2 rounded-lg border text-center transition-all cursor-pointer text-xs font-medium ${
-                  relType === 'partner'
-                    ? 'bg-pink-500/25 border-pink-500 text-pink-200 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                }`}
-              >
-                💍 Pareja
-              </button>
-              <button
-                type="button"
-                onClick={() => setRelType('sibling')}
-                className={`p-2 rounded-lg border text-center transition-all cursor-pointer text-xs font-medium ${
-                  relType === 'sibling'
-                    ? 'bg-sky-500/25 border-sky-500 text-sky-200 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                }`}
-              >
-                👥 Hermano/a
-              </button>
-              <button
-                type="button"
-                onClick={() => setRelType('child')}
-                className={`p-2 rounded-lg border text-center transition-all cursor-pointer text-xs font-medium ${
-                  relType === 'child'
-                    ? 'bg-amber-500/25 border-amber-500 text-amber-200 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                }`}
-              >
-                👶 Hijo/a
-              </button>
-              <button
-                type="button"
-                onClick={() => setRelType('parent')}
-                className={`p-2 rounded-lg border text-center transition-all cursor-pointer text-xs font-medium ${
-                  relType === 'parent'
-                    ? 'bg-purple-500/25 border-purple-500 text-purple-200 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                }`}
-              >
-                👨‍👩‍👧 Padre/Madre
-              </button>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {RELATIONSHIP_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setRelType(opt.id)}
+                  className={`p-2 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium ${
+                    relType === opt.id
+                      ? `${opt.activeBg} text-white border-2 shadow-sm`
+                      : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
+                  }`}
+                >
+                  {opt.shortLabel}
+                </button>
+              ))}
             </div>
+
+            {!ageValidation.valid && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-400/50 space-y-2">
+                <p className="text-[11px] text-amber-200 leading-relaxed">
+                  ⚠️ {ageValidation.error}
+                </p>
+                {ageValidation.suggestedRelationship && (
+                  <button
+                    type="button"
+                    onClick={() => setRelType(ageValidation.suggestedRelationship!)}
+                    className="px-3 py-1 rounded-lg bg-amber-400/25 hover:bg-amber-400/35 border border-amber-300/60 text-amber-100 text-[11px] font-semibold cursor-pointer"
+                  >
+                    ✨ Cambiar automáticamente a {ageValidation.suggestedLabel}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

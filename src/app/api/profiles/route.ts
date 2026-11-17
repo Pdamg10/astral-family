@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { findCityLocation } from '@/lib/cities';
 import { calculateFullChart } from '@/services/astrology/chart';
 import { replaceProfileChartData } from '@/services/astrology/profileSync';
+import { isValidRelationship, validateRelationshipAges } from '@/lib/genealogy';
+import { applyRelationship } from '@/services/familyLinks';
 
 const profileInclude = {
   planetaryPositions: true,
@@ -14,6 +16,10 @@ const profileInclude = {
   parent2: { select: { id: true, name: true, birthDate: true } },
   partner: { select: { id: true, name: true, birthDate: true } },
   partnerOf: { select: { id: true, name: true, birthDate: true } },
+  partnerLinksA: { include: { profileB: { select: { id: true, name: true, birthDate: true } } } },
+  partnerLinksB: { include: { profileA: { select: { id: true, name: true, birthDate: true } } } },
+  familyLinksFrom: { include: { toProfile: { select: { id: true, name: true, birthDate: true } } } },
+  familyLinksTo: { include: { fromProfile: { select: { id: true, name: true, birthDate: true } } } },
   sibling: { select: { id: true, name: true, birthDate: true } },
   siblingOf: { select: { id: true, name: true, birthDate: true } },
   children1: { select: { id: true, name: true, birthDate: true } },
@@ -22,42 +28,92 @@ const profileInclude = {
 };
 
 function formatAllProfiles(rawProfiles: any[]) {
-  // Pass 1: compute direct relationships for each profile
+  // Build undirected sibling adjacency graph (direct sibling links + shared parents)
+  // so sibling groups are transitive (e.g. if A-B and B-C are siblings, A-C are siblings too)
+  const rawById = new Map(rawProfiles.map((p) => [p.id, p]));
+  const siblingAdj = new Map<string, Set<string>>();
+  const ensureNode = (id: string) => {
+    if (!siblingAdj.has(id)) siblingAdj.set(id, new Set());
+    return siblingAdj.get(id)!;
+  };
+  const connectSiblings = (a: string, b: string) => {
+    if (!a || !b || a === b) return;
+    ensureNode(a).add(b);
+    ensureNode(b).add(a);
+  };
+
+  for (const p of rawProfiles) {
+    ensureNode(p.id);
+    if (p.sibling?.id) connectSiblings(p.id, p.sibling.id);
+    for (const s of p.siblingOf || []) connectSiblings(p.id, s.id);
+    if (p.parentId || p.parent2Id) {
+      const myParents = [p.parentId, p.parent2Id].filter(Boolean);
+      for (const other of rawProfiles) {
+        if (other.id !== p.id && (other.parentId || other.parent2Id)) {
+          const otherParents = [other.parentId, other.parent2Id].filter(Boolean);
+          if (myParents.some(parentId => otherParents.includes(parentId))) {
+            connectSiblings(p.id, other.id);
+          }
+        }
+      }
+    }
+  }
+
+  // BFS per node to collect full sibling component
+  const getTransitiveSiblings = (startId: string) => {
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+    const result: { id: string; name: string; birthDate?: string }[] = [];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const nextId of siblingAdj.get(curr) || []) {
+        if (!visited.has(nextId)) {
+          visited.add(nextId);
+          queue.push(nextId);
+          const prof = rawById.get(nextId);
+          if (prof) {
+            result.push({ id: prof.id, name: prof.name, birthDate: prof.birthDate });
+          }
+        }
+      }
+    }
+    return result;
+  };
+
+  // Pass 1: compute direct relationships (including ALL partners) for each profile
   const baseList = rawProfiles.map((p) => {
     const childrenMap = new Map();
     (p.children1 || []).forEach((c: any) => childrenMap.set(c.id, c));
     (p.children2 || []).forEach((c: any) => childrenMap.set(c.id, c));
-    const effectivePartner = p.partner || (p.partnerOf && p.partnerOf[0]) || null;
 
-    // Siblings map
-    const siblingsMap = new Map();
-    if (p.sibling) siblingsMap.set(p.sibling.id, p.sibling);
-    (p.siblingOf || []).forEach((s: any) => siblingsMap.set(s.id, s));
+    // Merge ALL partners (legacy partner/partnerOf + many-to-many PartnerLink)
+    const partnersMap = new Map<string, { id: string; name: string; birthDate?: string }>();
+    const addPartner = (ref?: { id: string; name: string; birthDate?: string } | null) => {
+      if (ref && ref.id !== p.id) {
+        partnersMap.set(ref.id, { id: ref.id, name: ref.name, birthDate: ref.birthDate });
+      }
+    };
+    addPartner(p.partner);
+    (p.partnerOf || []).forEach((other: any) => addPartner(other));
+    (p.partnerLinksA || []).forEach((link: any) => addPartner(link.profileB));
+    (p.partnerLinksB || []).forEach((link: any) => addPartner(link.profileA));
 
-    if (p.parentId || p.parent2Id) {
-      const myParents = [p.parentId, p.parent2Id].filter(Boolean);
-      rawProfiles.forEach((other) => {
-        if (other.id !== p.id && (other.parentId || other.parent2Id)) {
-          const otherParents = [other.parentId, other.parent2Id].filter(Boolean);
-          const sharesParent = myParents.some(parentId => otherParents.includes(parentId));
-          if (sharesParent) {
-            siblingsMap.set(other.id, { id: other.id, name: other.name, birthDate: other.birthDate });
-          }
-        }
-      });
-    }
+    const partners = Array.from(partnersMap.values());
+    const effectivePartner = partners[0] || null;
+    const siblings = getTransitiveSiblings(p.id);
 
     return {
       ...p,
       partner: effectivePartner,
+      partners,
       children: Array.from(childrenMap.values()),
-      siblings: Array.from(siblingsMap.values()),
+      siblings,
     };
   });
 
   const profileMap = new Map(baseList.map((p) => [p.id, p]));
 
-  // Pass 2: compute full kinship network for each profile
+  // Pass 2: compute full kinship network for each profile (propagating across ALL partners)
   return baseList.map((p) => {
     const inLawsMap = new Map();
     const unclesAuntsMap = new Map();
@@ -67,6 +123,8 @@ function formatAllProfiles(rawProfiles: any[]) {
     const cousinsMap = new Map();
     const parentsInLawMap = new Map();
     const childrenInLawMap = new Map();
+
+    const myPartnerIds = new Set((p.partners || []).map((pr: any) => pr.id));
 
     const parentProfiles: any[] = [];
     if (p.parentId) {
@@ -90,7 +148,7 @@ function formatAllProfiles(rawProfiles: any[]) {
       }
     });
 
-    // 2. Grandchildren (Nietos) & Children-in-law (Yernos/Nueras)
+    // 2. Grandchildren (Nietos) & Children-in-law (Yernos/Nueras - ALL partners of children)
     p.children.forEach((chRef: any) => {
       const chProf = profileMap.get(chRef.id);
       if (chProf?.children) {
@@ -98,12 +156,14 @@ function formatAllProfiles(rawProfiles: any[]) {
           grandchildrenMap.set(gch.id, { id: gch.id, name: gch.name, birthDate: gch.birthDate });
         });
       }
-      if (chProf?.partner) {
-        childrenInLawMap.set(chProf.partner.id, { id: chProf.partner.id, name: chProf.partner.name, birthDate: chProf.partner.birthDate });
-      }
+      (chProf?.partners || []).forEach((chPartner: any) => {
+        if (chPartner.id !== p.id) {
+          childrenInLawMap.set(chPartner.id, { id: chPartner.id, name: chPartner.name, birthDate: chPartner.birthDate });
+        }
+      });
     });
 
-    // 3. Uncles and Aunts (Tíos / Tías) & Cousins (Primos)
+    // 3. Uncles and Aunts (Tíos / Tías - including ALL partners of parent's siblings) & Cousins (Primos)
     parentProfiles.forEach((par) => {
       if (par.siblings) {
         par.siblings.forEach((uncleRef: any) => {
@@ -111,9 +171,11 @@ function formatAllProfiles(rawProfiles: any[]) {
             unclesAuntsMap.set(uncleRef.id, { id: uncleRef.id, name: uncleRef.name, birthDate: uncleRef.birthDate });
 
             const uncleProf = profileMap.get(uncleRef.id);
-            if (uncleProf?.partner && uncleProf.partner.id !== p.id) {
-              unclesAuntsMap.set(uncleProf.partner.id, { id: uncleProf.partner.id, name: uncleProf.partner.name, birthDate: uncleProf.partner.birthDate });
-            }
+            (uncleProf?.partners || []).forEach((unclePartner: any) => {
+              if (unclePartner.id !== p.id) {
+                unclesAuntsMap.set(unclePartner.id, { id: unclePartner.id, name: unclePartner.name, birthDate: unclePartner.birthDate });
+              }
+            });
 
             if (uncleProf?.children) {
               uncleProf.children.forEach((cousinRef: any) => {
@@ -127,7 +189,7 @@ function formatAllProfiles(rawProfiles: any[]) {
       }
     });
 
-    // 4. Nieces and Nephews (Sobrinos / Sobrinas)
+    // 4. Nieces/Nephews & In-Laws via ALL partners of EVERY sibling
     p.siblings.forEach((sibRef: any) => {
       const sibProf = profileMap.get(sibRef.id);
       if (sibProf?.children) {
@@ -135,43 +197,100 @@ function formatAllProfiles(rawProfiles: any[]) {
           niecesNephewsMap.set(nieceRef.id, { id: nieceRef.id, name: nieceRef.name, birthDate: nieceRef.birthDate });
         });
       }
-      if (sibProf?.partner && sibProf.partner.id !== p.id) {
-        inLawsMap.set(sibProf.partner.id, { id: sibProf.partner.id, name: sibProf.partner.name, birthDate: sibProf.partner.birthDate });
+      (sibProf?.partners || []).forEach((sibPartner: any) => {
+        if (sibPartner.id !== p.id && !myPartnerIds.has(sibPartner.id)) {
+          inLawsMap.set(sibPartner.id, { id: sibPartner.id, name: sibPartner.name, birthDate: sibPartner.birthDate });
+        }
+      });
+    });
+
+    // 5. Relatives via ALL of my own partners (1, 2, or more!)
+    (p.partners || []).forEach((partRef: any) => {
+      const partProf = profileMap.get(partRef.id);
+      if (!partProf) return;
+
+      if (partProf.siblings) {
+        partProf.siblings.forEach((sibRef: any) => {
+          if (sibRef.id !== p.id && !myPartnerIds.has(sibRef.id)) {
+            inLawsMap.set(sibRef.id, { id: sibRef.id, name: sibRef.name, birthDate: sibRef.birthDate });
+
+            const partSibProf = profileMap.get(sibRef.id);
+            if (partSibProf?.children) {
+              partSibProf.children.forEach((nieceRef: any) => {
+                niecesNephewsMap.set(nieceRef.id, { id: nieceRef.id, name: nieceRef.name, birthDate: nieceRef.birthDate });
+              });
+            }
+          }
+        });
+      }
+
+      if (partProf.parentId) {
+        const s1 = profileMap.get(partProf.parentId);
+        if (s1 && s1.id !== p.id) parentsInLawMap.set(s1.id, { id: s1.id, name: s1.name, birthDate: s1.birthDate });
+      }
+      if (partProf.parent2Id) {
+        const s2 = profileMap.get(partProf.parent2Id);
+        if (s2 && s2.id !== p.id) parentsInLawMap.set(s2.id, { id: s2.id, name: s2.name, birthDate: s2.birthDate });
       }
     });
 
-    // If I have a partner:
-    if (p.partner?.id) {
-      const partProf = profileMap.get(p.partner.id);
-      if (partProf) {
-        if (partProf.siblings) {
-          partProf.siblings.forEach((sibRef: any) => {
-            if (sibRef.id !== p.id) {
-              inLawsMap.set(sibRef.id, { id: sibRef.id, name: sibRef.name, birthDate: sibRef.birthDate });
+    // 6. Merge direct extended FamilyLink records (grandparent/grandchild, uncle/niece, cousin, suegro/yerno, cuñado)
+    const directFamilyLinks: { relationship: string; targetId: string; targetName: string }[] = [];
+    const addToMap = (map: Map<any, any>, ref?: { id: string; name: string; birthDate?: string } | null) => {
+      if (ref && ref.id !== p.id) {
+        map.set(ref.id, { id: ref.id, name: ref.name, birthDate: ref.birthDate });
+      }
+    };
 
-              const partSibProf = profileMap.get(sibRef.id);
-              if (partSibProf?.children) {
-                partSibProf.children.forEach((nieceRef: any) => {
-                  niecesNephewsMap.set(nieceRef.id, { id: nieceRef.id, name: nieceRef.name, birthDate: nieceRef.birthDate });
-                });
-              }
-            }
-          });
-        }
+    for (const link of p.familyLinksFrom || []) {
+      const target = link.toProfile;
+      if (!target || target.id === p.id) continue;
+      if (link.relationship === 'grandparent') {
+        addToMap(grandchildrenMap, target);
+        directFamilyLinks.push({ relationship: 'grandparent', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'uncle_aunt') {
+        addToMap(niecesNephewsMap, target);
+        directFamilyLinks.push({ relationship: 'uncle_aunt', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'parent_in_law') {
+        addToMap(childrenInLawMap, target);
+        directFamilyLinks.push({ relationship: 'parent_in_law', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'cousin') {
+        addToMap(cousinsMap, target);
+        directFamilyLinks.push({ relationship: 'cousin', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'in_law') {
+        addToMap(inLawsMap, target);
+        directFamilyLinks.push({ relationship: 'in_law', targetId: target.id, targetName: target.name });
+      }
+    }
 
-        if (partProf.parentId) {
-          const s1 = profileMap.get(partProf.parentId);
-          if (s1) parentsInLawMap.set(s1.id, { id: s1.id, name: s1.name, birthDate: s1.birthDate });
-        }
-        if (partProf.parent2Id) {
-          const s2 = profileMap.get(partProf.parent2Id);
-          if (s2) parentsInLawMap.set(s2.id, { id: s2.id, name: s2.name, birthDate: s2.birthDate });
-        }
+    for (const link of p.familyLinksTo || []) {
+      const target = link.fromProfile;
+      if (!target || target.id === p.id) continue;
+      const targetFull = profileMap.get(target.id);
+      if (link.relationship === 'grandparent') {
+        addToMap(grandparentsMap, target);
+        // Also propagate grandparent's partner(s) as grandparents
+        (targetFull?.partners || []).forEach((gpPartner: any) => addToMap(grandparentsMap, gpPartner));
+        directFamilyLinks.push({ relationship: 'grandchild', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'uncle_aunt') {
+        addToMap(unclesAuntsMap, target);
+        (targetFull?.partners || []).forEach((uPartner: any) => addToMap(unclesAuntsMap, uPartner));
+        directFamilyLinks.push({ relationship: 'niece_nephew', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'parent_in_law') {
+        addToMap(parentsInLawMap, target);
+        directFamilyLinks.push({ relationship: 'child_in_law', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'cousin') {
+        addToMap(cousinsMap, target);
+        directFamilyLinks.push({ relationship: 'cousin', targetId: target.id, targetName: target.name });
+      } else if (link.relationship === 'in_law') {
+        addToMap(inLawsMap, target);
+        directFamilyLinks.push({ relationship: 'in_law', targetId: target.id, targetName: target.name });
       }
     }
 
     return {
       ...p,
+      directFamilyLinks,
       inLaws: Array.from(inLawsMap.values()),
       unclesAunts: Array.from(unclesAuntsMap.values()),
       niecesNephews: Array.from(niecesNephewsMap.values()),
@@ -216,7 +335,10 @@ export async function POST(request: NextRequest) {
     const { payload } = auth;
 
     const body = await request.json();
-    const { name, birthDate, birthTime, timeUnknown, city, country, latitude, longitude, timezone, parentId, parent2Id, partnerId, siblingId } = body;
+    const {
+      name, birthDate, birthTime, timeUnknown, city, country, latitude, longitude, timezone,
+      parentId, parent2Id, partnerId, siblingId, linkTargetId, linkRelationship,
+    } = body;
 
     if (!name || !birthDate) {
       return NextResponse.json(
@@ -240,6 +362,41 @@ export async function POST(request: NextRequest) {
       const [h, m] = birthTime.split(':').map(Number);
       if (h < 0 || h > 23 || m < 0 || m > 59) {
         return NextResponse.json({ error: 'Hora de nacimiento fuera de rango' }, { status: 400 });
+      }
+    }
+
+    // Validate generational ages when linking directly during creation
+    const newPersonRef = { name: name.trim(), birthDate };
+    if (linkTargetId && isValidRelationship(linkRelationship)) {
+      const targetProf = await db.birthProfile.findUnique({ where: { id: linkTargetId } });
+      if (targetProf) {
+        const ageCheck = validateRelationshipAges(newPersonRef, linkRelationship, targetProf);
+        if (!ageCheck.valid) {
+          return NextResponse.json(
+            {
+              error: ageCheck.error,
+              suggestedRelationship: ageCheck.suggestedRelationship,
+              suggestedLabel: ageCheck.suggestedLabel,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+    for (const pId of [parentId, parent2Id].filter(Boolean)) {
+      const parentProf = await db.birthProfile.findUnique({ where: { id: pId } });
+      if (parentProf) {
+        const ageCheck = validateRelationshipAges(newPersonRef, 'child', parentProf);
+        if (!ageCheck.valid) {
+          return NextResponse.json(
+            {
+              error: ageCheck.error,
+              suggestedRelationship: ageCheck.suggestedRelationship,
+              suggestedLabel: ageCheck.suggestedLabel,
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -294,6 +451,16 @@ export async function POST(request: NextRequest) {
 
     // Save all astrological data in atomic transaction
     await db.$transaction(async (tx) => {
+      if (linkTargetId && isValidRelationship(linkRelationship)) {
+        await applyRelationship(tx, profile.id, linkRelationship, linkTargetId);
+      } else if (partnerId) {
+        const [pA, pB] = [profile.id, partnerId].sort();
+        await tx.partnerLink.upsert({
+          where: { profileAId_profileBId: { profileAId: pA, profileBId: pB } },
+          create: { profileAId: pA, profileBId: pB },
+          update: {},
+        });
+      }
       await replaceProfileChartData(tx, profile.id, chartData, false);
       await tx.birthProfile.update({
         where: { id: profile.id },

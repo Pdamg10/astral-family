@@ -22,6 +22,7 @@ export interface BirthProfile {
   parent?: { id: string; name: string; birthDate?: string } | null;
   parent2?: { id: string; name: string; birthDate?: string } | null;
   partner?: { id: string; name: string; birthDate?: string } | null;
+  partners?: { id: string; name: string; birthDate?: string }[];
   partnerOf?: { id: string; name: string; birthDate?: string }[];
   sibling?: { id: string; name: string; birthDate?: string } | null;
   siblingOf?: { id: string; name: string; birthDate?: string }[];
@@ -34,6 +35,7 @@ export interface BirthProfile {
   cousins?: { id: string; name: string; birthDate?: string }[];
   parentsInLaw?: { id: string; name: string; birthDate?: string }[];
   childrenInLaw?: { id: string; name: string; birthDate?: string }[];
+  directFamilyLinks?: { relationship: string; targetId: string; targetName: string }[];
   children1?: { id: string; name: string; birthDate?: string }[];
   children2?: { id: string; name: string; birthDate?: string }[];
   children?: { id: string; name: string; birthDate?: string }[];

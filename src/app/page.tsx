@@ -51,20 +51,22 @@ function hexToRgba(hex: string, opacity: number): string {
 const KINSHIP_GROUPS: {
   key: keyof Pick<
     BirthProfile,
-    'siblings' | 'inLaws' | 'unclesAunts' | 'niecesNephews' | 'cousins' | 'grandparents' | 'grandchildren' | 'children'
+    'grandparents' | 'siblings' | 'inLaws' | 'unclesAunts' | 'niecesNephews' | 'cousins' | 'children' | 'grandchildren' | 'parentsInLaw' | 'childrenInLaw'
   >;
   label: string;
   labelClass: string;
   pillClass: string;
 }[] = [
+  { key: 'grandparents', label: '👴 Abuelos', labelClass: 'text-yellow-300/80', pillClass: 'bg-yellow-500/15 text-yellow-200 border-yellow-500/30 hover:bg-yellow-500/30' },
   { key: 'siblings', label: '👥 Hermanos', labelClass: 'text-sky-300/80', pillClass: 'bg-sky-500/15 text-sky-200 border-sky-500/30 hover:bg-sky-500/30' },
   { key: 'inLaws', label: '🤝 Cuñados', labelClass: 'text-teal-300/80', pillClass: 'bg-teal-500/15 text-teal-200 border-teal-500/30 hover:bg-teal-500/30' },
   { key: 'unclesAunts', label: '🧓 Tíos', labelClass: 'text-emerald-300/80', pillClass: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30 hover:bg-emerald-500/30' },
-  { key: 'niecesNephews', label: '🧸 Sobrinos', labelClass: 'text-indigo-300/80', pillClass: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/30 hover:bg-indigo-500/30' },
   { key: 'cousins', label: '🫂 Primos', labelClass: 'text-cyan-300/80', pillClass: 'bg-cyan-500/15 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/30' },
-  { key: 'grandparents', label: '👴 Abuelos', labelClass: 'text-yellow-300/80', pillClass: 'bg-yellow-500/15 text-yellow-200 border-yellow-500/30 hover:bg-yellow-500/30' },
-  { key: 'grandchildren', label: '🧒 Nietos', labelClass: 'text-rose-300/80', pillClass: 'bg-rose-500/15 text-rose-200 border-rose-500/30 hover:bg-rose-500/30' },
   { key: 'children', label: '👶 Hijos', labelClass: 'text-amber-300/80', pillClass: 'bg-amber-500/15 text-amber-200 border-amber-500/30 hover:bg-amber-500/30' },
+  { key: 'niecesNephews', label: '🧸 Sobrinos', labelClass: 'text-indigo-300/80', pillClass: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/30 hover:bg-indigo-500/30' },
+  { key: 'grandchildren', label: '🧒 Nietos', labelClass: 'text-rose-300/80', pillClass: 'bg-rose-500/15 text-rose-200 border-rose-500/30 hover:bg-rose-500/30' },
+  { key: 'parentsInLaw', label: '🏛️ Suegros', labelClass: 'text-violet-300/80', pillClass: 'bg-violet-500/15 text-violet-200 border-violet-500/30 hover:bg-violet-500/30' },
+  { key: 'childrenInLaw', label: '💐 Yernos/Nueras', labelClass: 'text-fuchsia-300/80', pillClass: 'bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-500/30 hover:bg-fuchsia-500/30' },
 ];
 
 export default function AstralFamilyHome() {
@@ -498,8 +500,11 @@ export default function AstralFamilyHome() {
       const moon = selProfile.planetaryPositions?.find((pp: any) => pp.body === 'Moon');
       const asc = selProfile.chartPoints?.find((cp: any) => cp.point === 'Ascendant') || selProfile.houses?.find((h: any) => h.houseNumber === 1);
       const profileAge = calculateAge(selProfile.birthDate);
+      const selPartners = selProfile.partners?.length
+        ? selProfile.partners
+        : (selProfile.partner ? [selProfile.partner] : []);
       const hasAnyKinship = Boolean(
-        selProfile.partner ||
+        selPartners.length > 0 ||
         selProfile.parent ||
         selProfile.parent2 ||
         KINSHIP_GROUPS.some(g => (selProfile[g.key]?.length || 0) > 0)
@@ -632,18 +637,23 @@ export default function AstralFamilyHome() {
                   {/* Lineage & Family Connections */}
                   {hasAnyKinship && (
                     <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-center gap-3 text-xs">
-                      {selProfile.partner && (
-                        <div className="flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 px-3 py-1 rounded-full text-pink-200">
-                          <span className="text-pink-400">💍 Pareja:</span>
-                          <button
-                            onClick={() => {
-                              const partnerProf = profiles.find(pr => pr.id === selProfile.partnerId || pr.id === selProfile.partner?.id);
-                              if (partnerProf) setSelProfile(partnerProf);
-                            }}
-                            className="font-semibold underline hover:text-white transition-colors cursor-pointer"
-                          >
-                            {selProfile.partner.name} →
-                          </button>
+                      {selPartners.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-pink-400">
+                            💍 {selPartners.length > 1 ? `Parejas (${selPartners.length})` : 'Pareja'}:
+                          </span>
+                          {selPartners.map(partnerRef => (
+                            <button
+                              key={partnerRef.id}
+                              onClick={() => {
+                                const partnerProf = profiles.find(pr => pr.id === partnerRef.id);
+                                if (partnerProf) setSelProfile(partnerProf);
+                              }}
+                              className="px-2.5 py-0.5 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-200 hover:bg-pink-500/30 font-semibold transition-all text-[11px] cursor-pointer"
+                            >
+                              ✦ {partnerRef.name} →
+                            </button>
+                          ))}
                         </div>
                       )}
 

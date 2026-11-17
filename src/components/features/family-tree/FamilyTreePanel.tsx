@@ -44,14 +44,18 @@ export default function FamilyTreePanel({
 
   const isUserAdmin = userRole === 'admin';
 
-  // Calculate pairs / couples
+  // Calculate pairs / couples (supports 1 or multiple partners per profile)
   const couples = useMemo(() => {
     const pairs: { p1: BirthProfile; p2: BirthProfile }[] = [];
     const seen = new Set<string>();
 
     profiles.forEach(p => {
-      if (p.partnerId) {
-        const partner = profiles.find(other => other.id === p.partnerId);
+      const partnerRefs = p.partners?.length
+        ? p.partners
+        : (p.partner ? [p.partner] : []);
+
+      partnerRefs.forEach(ref => {
+        const partner = profiles.find(other => other.id === ref.id);
         if (partner) {
           const key = [p.id, partner.id].sort().join('--');
           if (!seen.has(key)) {
@@ -59,7 +63,7 @@ export default function FamilyTreePanel({
             pairs.push({ p1: p, p2: partner });
           }
         }
-      }
+      });
     });
 
     return pairs;
@@ -368,11 +372,43 @@ export default function FamilyTreePanel({
 
                       {/* Relationship Connections */}
                       <div className="space-y-1.5 text-xs text-white/70 pt-2 border-t border-white/5">
-                        {/* Pareja */}
-                        {member.partner && (
-                          <div className="flex items-center justify-between text-pink-300">
-                            <span className="text-white/40">💍 Pareja:</span>
-                            <span className="font-semibold">{member.partner.name}</span>
+                        {/* Pareja(s) */}
+                        {(() => {
+                          const partnerList = member.partners?.length ? member.partners : (member.partner ? [member.partner] : []);
+                          if (partnerList.length === 0) return null;
+                          return (
+                            <div className="space-y-0.5">
+                              <span className="text-white/40 text-[11px]">
+                                💍 {partnerList.length > 1 ? `Parejas (${partnerList.length}):` : 'Pareja:'}
+                              </span>
+                              <div className="flex flex-wrap gap-1 pl-1">
+                                {partnerList.map(pt => (
+                                  <span
+                                    key={pt.id}
+                                    className="px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-200 text-[10px] font-semibold"
+                                  >
+                                    💍 {pt.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Abuelos */}
+                        {member.grandparents && member.grandparents.length > 0 && (
+                          <div className="space-y-0.5 pt-1">
+                            <span className="text-white/40 text-[11px]">👴 Abuelos ({member.grandparents.length}):</span>
+                            <div className="flex flex-wrap gap-1 pl-1">
+                              {member.grandparents.map(gp => (
+                                <span
+                                  key={gp.id}
+                                  className="px-2 py-0.5 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-yellow-200 text-[10px]"
+                                >
+                                  👴 {gp.name}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
 
@@ -466,6 +502,57 @@ export default function FamilyTreePanel({
                                   className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 text-[10px]"
                                 >
                                   🫂 {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Nietos */}
+                        {member.grandchildren && member.grandchildren.length > 0 && (
+                          <div className="space-y-0.5 pt-1">
+                            <span className="text-white/40 text-[11px]">🧒 Nietos ({member.grandchildren.length}):</span>
+                            <div className="flex flex-wrap gap-1 pl-1">
+                              {member.grandchildren.map(gc => (
+                                <span
+                                  key={gc.id}
+                                  className="px-2 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-200 text-[10px]"
+                                >
+                                  🧒 {gc.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Suegros */}
+                        {member.parentsInLaw && member.parentsInLaw.length > 0 && (
+                          <div className="space-y-0.5 pt-1">
+                            <span className="text-white/40 text-[11px]">🏛️ Suegros ({member.parentsInLaw.length}):</span>
+                            <div className="flex flex-wrap gap-1 pl-1">
+                              {member.parentsInLaw.map(pil => (
+                                <span
+                                  key={pil.id}
+                                  className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[10px]"
+                                >
+                                  🏛️ {pil.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Yernos / Nueras */}
+                        {member.childrenInLaw && member.childrenInLaw.length > 0 && (
+                          <div className="space-y-0.5 pt-1">
+                            <span className="text-white/40 text-[11px]">💐 Yernos/Nueras ({member.childrenInLaw.length}):</span>
+                            <div className="flex flex-wrap gap-1 pl-1">
+                              {member.childrenInLaw.map(cil => (
+                                <span
+                                  key={cil.id}
+                                  className="px-2 py-0.5 rounded-md bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-200 text-[10px]"
+                                >
+                                  💐 {cil.name}
                                 </span>
                               ))}
                             </div>

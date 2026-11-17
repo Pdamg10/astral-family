@@ -92,6 +92,10 @@ model BirthProfile {
 
   partner       BirthProfile?   @relation("FamilyPartners", fields: [partnerId], references: [id], onDelete: SetNull)
   partnerOf     BirthProfile[]  @relation("FamilyPartners")
+  partnerLinksA PartnerLink[]   @relation("PartnerLinksA")
+  partnerLinksB PartnerLink[]   @relation("PartnerLinksB")
+  familyLinksFrom FamilyLink[]  @relation("FamilyLinksFrom")
+  familyLinksTo   FamilyLink[]  @relation("FamilyLinksTo")
 
   sibling       BirthProfile?   @relation("FamilySiblings", fields: [siblingId], references: [id], onDelete: SetNull)
   siblingOf     BirthProfile[]  @relation("FamilySiblings")
@@ -108,6 +112,35 @@ model BirthProfile {
   @@index([partnerId])
   @@index([siblingId])
   @@index([createdAt])
+}
+
+model PartnerLink {
+  id         String   @id @default(cuid())
+  profileAId String
+  profileBId String
+  createdAt  DateTime @default(now())
+
+  profileA BirthProfile @relation("PartnerLinksA", fields: [profileAId], references: [id], onDelete: Cascade)
+  profileB BirthProfile @relation("PartnerLinksB", fields: [profileBId], references: [id], onDelete: Cascade)
+
+  @@unique([profileAId, profileBId])
+  @@index([profileAId])
+  @@index([profileBId])
+}
+
+model FamilyLink {
+  id           String   @id @default(cuid())
+  fromId       String
+  toId         String
+  relationship String   // grandparent, uncle_aunt, cousin, parent_in_law, in_law
+  createdAt    DateTime @default(now())
+
+  fromProfile BirthProfile @relation("FamilyLinksFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toProfile   BirthProfile @relation("FamilyLinksTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, relationship])
+  @@index([fromId])
+  @@index([toId])
 }
 
 model PlanetaryPosition {

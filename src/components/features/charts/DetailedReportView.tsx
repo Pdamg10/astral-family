@@ -295,12 +295,16 @@ export default function DetailedReportView({
                 <p className="text-xs text-white/60">
                   Fotografía celeste tridimensional calculada para el instante exacto de tu nacimiento ({profile.birthDate} a las {profile.birthTime} en {profile.city}, {profile.country}).
                 </p>
-                {profile.partner && (
-                  <div className="pt-1 text-xs text-pink-300 flex items-center gap-1.5">
-                    <span>💍 Pareja:</span>
-                    <span className="font-semibold text-white/90">{profile.partner.name}</span>
-                  </div>
-                )}
+                {(() => {
+                  const partnerList = profile.partners?.length ? profile.partners : (profile.partner ? [profile.partner] : []);
+                  if (partnerList.length === 0) return null;
+                  return (
+                    <div className="pt-1 text-xs text-pink-300 flex items-center gap-1.5 flex-wrap">
+                      <span>💍 {partnerList.length > 1 ? `Parejas (${partnerList.length}):` : 'Pareja:'}</span>
+                      <span className="font-semibold text-white/90">{partnerList.map(pt => pt.name).join(', ')}</span>
+                    </div>
+                  );
+                })()}
                 {(profile.parent || profile.parent2) && (
                   <div className="pt-1 text-xs text-purple-300 flex items-center gap-1.5">
                     <span>👨‍👩‍👧 Hijo/a de:</span>
