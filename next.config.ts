@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  allowedDevOrigins: ["10.46.1.120", "localhost", "127.0.0.1"],
+  allowedDevOrigins: ["10.46.1.120", "192.168.1.115", "localhost", "127.0.0.1", "*.trycloudflare.com"],
   async headers() {
     return [
       {
